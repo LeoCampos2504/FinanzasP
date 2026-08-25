@@ -27,6 +27,10 @@ export async function createPage(dataSourceId: string, properties: Record<string
   });
 }
 
+export async function updatePage(pageId: string, properties: Record<string, unknown>) {
+  return notionRequest(`/pages/${pageId}`, { method: "PATCH", body: JSON.stringify({ properties }) });
+}
+
 export async function retrievePage(pageId: string) {
   return notionRequest(`/pages/${pageId}`);
 }

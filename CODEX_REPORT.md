@@ -1,4 +1,4 @@
-# CODEX REPORT - Finanzas El Tigre PWA - MVP 3 Promos
+# CODEX REPORT - Finanzas El Tigre PWA - MVP 4.1 Producto + variantes
 
 ## Resumen
 
@@ -313,3 +313,114 @@ Se agregó `src/lib/stock.ts` con la función pura `normalizeStockStatus`, que d
 - Modo offline.
 
 No se hizo commit ni push.
+
+## MVP 4: gestión de productos y variantes
+
+Se agregó administración de productos base y variantes/ítems vendibles sin borrado físico. La pantalla `/productos` ahora tiene pestañas `Stock` y `Admin`; desde Admin se pueden crear y editar productos y variantes, activar/desactivar registros y acceder rápidamente a una nueva variante. Las rutas de formulario son `/productos/nuevo`, `/productos/[productId]/editar`, `/productos/variantes/nueva` y `/productos/variantes/[variantId]/editar`.
+
+Se agregaron `POST /api/productos`, `PATCH /api/productos/[productId]`, `POST /api/variantes` y `PATCH /api/variantes/[variantId]`. Los GET de productos y variantes aceptan `includeInactive=true` para administración. En demo las altas y ediciones responden de forma simulada; contra Notion usan `getDataSourceSchema`, candidatos de propiedad y `updatePage`/`createPage` únicamente en servidor.
+
+La escritura es schema-aware: Nombre, relaciones, precios, control de stock, stock inicial/mínimo, activo, orden y notas se escriben solo con el nombre real detectado. `Stock actual` y `Estado stock` nunca se envían desde estos formularios; el stock actual queda calculado por Notion a partir de movimientos y detalles. Si una propiedad requerida no existe se informa el data source y la propiedad; las opcionales ausentes se omiten con warning. Negocio, presentación, notas y activo son opcionales según el schema real.
+
+Config ahora informa el soporte de escritura de Productos base y Variantes además de listar las propiedades detectadas. Los candidatos incluyen `Nombre`/`Name`, relaciones de producto base, precios alternativos, `Maneja stock`/`Controla stock`, `Stock inicial`/`Stock` y nombres con/sin tilde.
+
+Archivos principales de MVP 4: `src/lib/notion/client.ts`, `src/lib/notion/normalize.ts`, `src/lib/notion/product-mappers.ts`, `src/lib/notion/product-admin.ts`, `src/lib/notion/product-admin-errors.ts`, `src/lib/types.ts`, `app/api/productos/route.ts`, `app/api/productos/[productId]/route.ts`, `app/api/variantes/route.ts`, `app/api/variantes/[variantId]/route.ts`, `app/config/page.tsx`, `app/api/config/status/route.ts`, `app/productos/page.tsx`, `app/productos/nuevo/page.tsx`, `app/productos/[productId]/editar/page.tsx`, `app/productos/variantes/nueva/page.tsx`, `app/productos/variantes/[variantId]/editar/page.tsx` y `src/components/product-admin-forms.tsx`.
+
+## Validación MVP 4
+
+- `npm run typecheck` — correcto, sin errores TypeScript.
+- `npm run lint` — correcto, ESLint sin errores.
+- `npm run build` — correcto; generó 36 rutas App Router, incluidas las nuevas pantallas y APIs de administración.
+- Smoke local sin sesión — `/productos`, `/productos/nuevo`, `/productos/variantes/nueva` y `/config` respondieron HTTP 200; `/api/productos`, `/api/variantes` y `/api/config/status` respondieron HTTP 401.
+- No se tocó `.env.local`, no se crearon secretos, no se expuso `NOTION_TOKEN`, no se hizo commit ni push.
+
+## Pruebas manuales recomendadas MVP 4
+
+1. En modo demo, abrir `/productos`, cambiar a Admin y crear un producto base; verificar el mensaje de simulación.
+2. Editar el producto y desactivarlo; confirmar que desaparece de Stock pero sigue visible con `includeInactive` en Admin.
+3. Crear una variante con stock administrado, precio de venta, costo de reposición, stock inicial y mínimo.
+4. Crear una variante sin stock administrado y confirmar que los campos de stock no son obligatorios.
+5. Editar precios, presentación y notas; desactivar y reactivar sin borrar páginas.
+6. Contra Notion real, abrir Config y verificar que las propiedades necesarias para escritura estén detectadas con sus nombres reales.
+7. Confirmar que al crear/editar no se envían `Stock actual` ni `Estado stock`; verificar que Notion los calcule mediante rollups/fórmulas.
+8. Probar nombres alternativos (`Name`, `Producto`, `Controla stock`, `Costo`, sin tildes) y revisar que Config no marque faltantes si un candidato existe.
+
+## MVP 4.1 Producto + variantes
+
+### Resumen
+
+Se implementó un flujo unificado en `/productos/nuevo` para crear un Producto base junto con una Variante / Ítem vendible. El usuario puede elegir producto único o producto con múltiples variantes iniciales. La estructura conceptual se mantiene separada: ventas, reposiciones, promos y stock siguen apuntando a variantes.
+
+### Alcance
+
+Incluido: producto único con variante automática, múltiples variantes iniciales, precios y costos por variante, stock inicial/mínimo por variante, activación, orden, notas, duplicar/quitar/colapsar cards, resultado exitoso o parcial y acceso posterior a vender/reponer cuando hay una única variante. Se conserva `/productos/variantes/nueva` para agregar variantes después y se agregó el acceso desde editar producto.
+
+No incluido: Caja/POS, usuarios internos, vista PC completa, cuentas/billeteras avanzadas, estadísticas avanzadas ni modo offline.
+
+### UX
+
+En modo único, el nombre vendible se inicializa con el nombre del producto y sigue siendo editable; el formulario muestra el texto “Este producto se venderá como una única presentación.” En modo múltiple se pueden agregar, quitar, duplicar y colapsar variantes iniciales. Cada card mantiene su propio precio de venta, precio promo, costo de reposición, control de stock, stock inicial, mínimo, activo, orden y notas. El resumen indica cuántas variantes se crearán.
+
+### API
+
+Se agregó `POST /api/productos/crear-con-variantes`. Recibe `product`, `mode` (`single` o `multiple`) y `variants`. Consulta ambos schemas, crea primero el Producto base y luego crea cada variante con la relación `Producto base` apuntando al page ID real recién creado. Si una variante falla, continúa con las restantes y devuelve `207` con `PARTIAL_PRODUCT_WITH_VARIANTS_CREATION`, `productId`, `productUrl`, `createdVariants` y `failedVariants`. Los endpoints existentes de alta/edición individual no se eliminan.
+
+### Notion
+
+Se mantiene Producto base + Variante / Ítem vendible. El producto único crea automáticamente una variante única asociada por page ID. Cada variante conserva su precio de venta, precio promo, costo de reposición y parámetros de stock; el costo usado en ventas/reposiciones sigue viniendo de la variante seleccionada. La construcción usa los helpers schema-aware existentes y omite opcionales ausentes. Nunca se escriben `Stock actual` ni `Estado stock`; solo `Stock inicial` y `Stock mínimo` cuando corresponde, dejando el cálculo actual a Notion.
+
+### Seguridad
+
+El endpoint orquestador requiere sesión. Las llamadas a Notion y `NOTION_TOKEN` permanecen en módulos server-side; el token no se envía al cliente ni se guarda en localStorage. No se modificó `.env.local`.
+
+### Demo mode
+
+El endpoint orquestador simula tanto producto único como producto con múltiples variantes, generando IDs demo y devolviendo los datos necesarios para mostrar el resultado. No se escriben páginas reales en modo demo. El caso parcial queda documentado para probarlo contra Notion o mediante una falla controlada de schema/propiedad.
+
+### Validaciones
+
+Se centralizaron normalización y validación de producto/variante en `src/lib/notion/product-admin.ts`. Producto exige nombre. Producto único exige exactamente una variante; múltiple exige al menos una. Cada variante exige nombre, precio de venta y costo de reposición no negativos; el precio promo es opcional y no negativo. Si maneja stock, exige stock inicial y mínimo no negativos. Los errores de validación ocurren antes de crear el producto para evitar huérfanos por datos inválidos.
+
+### Riesgos conocidos
+
+Notion no ofrece una transacción entre data sources. Si el Producto base se crea y una o más variantes fallan, no se intenta borrar automáticamente el producto; la respuesta parcial entrega el ID/URL del producto y el detalle de variantes creadas/fallidas para revisión o creación manual.
+
+### Archivos modificados
+
+- `app/productos/nuevo/page.tsx`: usa el nuevo formulario unificado.
+- `src/components/product-admin-forms.tsx`: agrega selector único/múltiple, cards de variantes, resultado parcial y acciones posteriores; edición de producto incluye “Agregar variante”.
+- `app/api/productos/crear-con-variantes/route.ts`: orquestación server-side y respuesta parcial.
+- `src/lib/notion/product-admin.ts`: normalización/validación reutilizable y builders schema-aware.
+- `app/globals.css`: estilos mobile-first para elección de modo, cards y resultados.
+- `app/api/productos/route.ts` y `app/api/variantes/route.ts`: reutilizan validadores centralizados.
+- `CODEX_REPORT.md`: documentación MVP 4.1.
+
+### Comandos ejecutados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 37 rutas App Router, incluida `POST /api/productos/crear-con-variantes`.
+- Smoke local sin sesión — `/productos/nuevo`, `/productos`, `/productos/variantes/nueva` y `/config` respondieron HTTP 200; `POST /api/productos/crear-con-variantes`, `/api/productos` y `/api/variantes` respondieron HTTP 401.
+
+### Pruebas manuales recomendadas
+
+1. Abrir `/productos/nuevo`.
+2. Crear producto único sin variantes reales y confirmar que se generan Producto base y Variante única relacionada.
+3. Confirmar en Notion que la relación usa el page ID real y que no se envían `Stock actual` ni `Estado stock`.
+4. Confirmar que la variante aparece para venta y reposición.
+5. Crear producto con múltiples variantes iniciales.
+6. Confirmar que cada variante conserva su propio precio, precio promo, costo y stock inicial/mínimo.
+7. Probar agregar, quitar, duplicar y colapsar cards.
+8. Editar una variante creada desde Admin.
+9. Vender y reponer una variante creada.
+10. Probar modo demo para producto único y múltiple.
+11. Probar una falla de schema o propiedad en Notion y confirmar `PARTIAL_PRODUCT_WITH_VARIANTS_CREATION`, variantes creadas/fallidas y recomendación de revisión.
+
+### Pendientes próximos
+
+- Cuentas/billeteras avanzadas creadas por usuario.
+- Usuarios internos.
+- Vista PC responsive.
+- Caja/POS local.
+- Estadísticas avanzadas.
+- Modo offline.

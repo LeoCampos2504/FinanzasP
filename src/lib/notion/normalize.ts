@@ -8,6 +8,7 @@ export function getTitle(page: NotionPage, name = "Nombre") {
   const p = property(page, name);
   return p?.title?.map((x: any) => x.plain_text || x.text?.content || "").join("") || p?.rich_text?.[0]?.plain_text || "";
 }
+export function getFirstTitle(page: NotionPage, names: readonly string[]) { for (const name of names) { const value = getTitle(page, name); if (value) return value; } return ""; }
 export function getNumber(page: NotionPage, name: string) { return Number(property(page, name)?.number ?? 0); }
 export function getSelect(page: NotionPage, name: string) { return property(page, name)?.select?.name || ""; }
 export function getDate(page: NotionPage, name: string) { return property(page, name)?.date?.start || ""; }

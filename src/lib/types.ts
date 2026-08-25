@@ -43,6 +43,13 @@ export type ProductBase = {
   notes?: string;
 };
 
+export type ProductBaseInput = {
+  name: string;
+  active: boolean;
+  order?: number | null;
+  notes?: string | null;
+};
+
 export type SellableVariant = {
   id: string;
   name: string;
@@ -61,6 +68,22 @@ export type SellableVariant = {
   stockStatusRaw: string;
   active?: boolean;
   stockKnown?: boolean;
+};
+
+export type VariantInput = {
+  productBaseId: string;
+  name: string;
+  variant?: string | null;
+  presentation?: string | null;
+  salePrice: number;
+  promoPrice?: number | null;
+  replacementCost: number;
+  managesStock: boolean;
+  initialStock?: number | null;
+  minimumStock?: number | null;
+  active: boolean;
+  order?: number | null;
+  notes?: string | null;
 };
 
 export type ProductDetail = {
