@@ -67,6 +67,7 @@ export async function resolvePromoSale(input: PromoSaleInput, context?: PromoCon
   const loaded = context || await loadPromoContext(input.promoId as string);
   if (loaded.promo.active === false) throw new PromoOperationError("PROMO_INACTIVE", "La promo seleccionada está inactiva.");
   const activeRules = loaded.rules.filter((rule) => rule.active !== false);
+  const quantity = Math.max(1, Math.floor(input.quantity || 1));
   if (!activeRules.length) throw new PromoOperationError("PROMO_WITHOUT_RULES", "La promo no tiene reglas activas configuradas.");
   const items: ResolvedPromoItem[] = [];
   for (const rule of activeRules) {
@@ -78,12 +79,13 @@ export async function resolvePromoSale(input: PromoSaleInput, context?: PromoCon
     const variant = mapSellableVariant(page, productNameMap(loaded.products));
     if (!variant.id || !variant.name || variant.active === false) throw new PromoOperationError("VARIANT_NOT_FOUND", `La variante elegida para "${rule.name}" no está disponible.`);
     if (rule.productBaseId && variant.productBaseId && rule.productBaseId !== variant.productBaseId) throw new PromoOperationError("VARIANT_NOT_ALLOWED", `La variante elegida no pertenece al producto de la regla "${rule.name}".`);
-    const stock = validateStock(rule.requiredQuantity, variant.currentStock, Boolean(variant.stockKnown), variant.managesStock);
+    const requiredQuantity = rule.requiredQuantity * quantity;
+    const stock = validateStock(requiredQuantity, variant.currentStock, Boolean(variant.stockKnown), variant.managesStock);
     if (!stock.ok) throw new PromoOperationError(stock.code, `${rule.name}: ${stock.message}`, { currentStock: variant.currentStock });
     const price = resolvePromoUnitPrice(input.mode, variant.salePrice, variant.promoPrice);
-    items.push({ ruleId: rule.id, ruleName: rule.name, productBaseId: variant.productBaseId, variantId: variant.id, variantName: variant.name, quantity: rule.requiredQuantity, unitPrice: price.value, unitPriceMode: price.detailMode, replacementCost: variant.replacementCost, stockStatus: variant.stockStatus, currentStock: variant.currentStock, managesStock: variant.managesStock, stockKnown: variant.stockKnown });
+    items.push({ ruleId: rule.id, ruleName: rule.name, productBaseId: variant.productBaseId, variantId: variant.id, variantName: variant.name, quantity: requiredQuantity, unitPrice: price.value, unitPriceMode: price.detailMode, replacementCost: variant.replacementCost, stockStatus: variant.stockStatus, currentStock: variant.currentStock, managesStock: variant.managesStock, stockKnown: variant.stockKnown });
   }
-  const total = calculatePromoTotal(input.mode, loaded.promo, items, input.manualTotal);
+  const total = calculatePromoTotal(input.mode, loaded.promo, items, input.manualTotal, quantity);
   if (!(total > 0)) throw new PromoOperationError("VALIDATION", "La promo no tiene un precio final válido. Indicá un total manual mayor a cero o configurá sus precios.");
   return { ...loaded, items, total };
 }

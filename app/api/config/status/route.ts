@@ -6,9 +6,10 @@ import { queryDataSource } from "@/lib/notion/client";
 import { canViewConfig, isGlobalAdmin } from "@/lib/permissions";
 
 const dataSources = [
-  { key: "MOVIMIENTOS_DATA_SOURCE_ID", label: "Movimientos", required: [["Nombre"], ["Fecha"], ["Ámbito"], ["Tipo"], ["Subtipo"], ["Cuenta"], ["Monto"], ["Estado de pago", "Estado"], ["Origen del dinero"], ["Activo"]], optional: [["Negocio"], ["Deudor"], ["Categoría", "Categoria", "Categoría movimiento", "Categoria movimiento"], ["Descripción", "Descripcion", "Notas", "Nota"], ["Entrada cuenta"], ["Salida cuenta"], ["Movimiento neto cuenta"]], writeRequired: [] },
+  { key: "MOVIMIENTOS_DATA_SOURCE_ID", label: "Movimientos", required: [["Nombre"], ["Fecha"], ["Ámbito"], ["Tipo"], ["Subtipo"], ["Cuenta"], ["Monto"], ["Estado de pago", "Estado"], ["Origen del dinero"], ["Activo"]], optional: [["Negocio"], ["Deudor"], ["Categoría", "Categoria", "Categoría movimiento", "Categoria movimiento"], ["Descripción", "Descripcion", "Notas", "Nota"], ["Entrada cuenta"], ["Salida cuenta"], ["Movimiento neto cuenta"], ["Caja", "Turno caja", "Turno de caja", "Caja / Turno", "Arqueo"], ["Realizado por", "Usuario", "Vendedor"], ["Monto recibido", "Paga con", "Pagó con", "Pago con", "Recibido"], ["Vuelto", "Cambio", "Dar vuelto"], ["Método de pago", "Metodo de pago", "Medio de pago"]], writeRequired: [] },
   { key: "DEUDORES_DATA_SOURCE_ID", label: "Deudores", required: [["Nombre"], ["Activo", "Activa"]], optional: [["Negocio"], ["Notas", "Nota", "Descripción", "Descripcion"]], writeRequired: [["Nombre"], ["Activo", "Activa"]] },
   { key: "CUENTAS_DATA_SOURCE_ID", label: "Cuentas", required: [["Nombre"]], optional: [["Negocio", "Negocios"], ["Activa", "Activo", "Habilitada", "Habilitado"], ["Es caja principal", "Caja principal", "Principal", "Cuenta principal"], ["Saldo inicial", "Saldo inicial cuenta", "Inicial"], ["Orden", "Order"], ["Tipo de cuenta", "Tipo", "Clase", "Categoría cuenta", "Categoria cuenta"], ["Notas", "Nota", "Descripción", "Descripcion"], ["Color"], ["Icono", "Ícono", "Icon"], ["Total entradas"], ["Total salidas"], ["Movimiento neto"], ["Saldo esperado"]], writeRequired: [["Nombre"]] },
+  { key: "CAJAS_DATA_SOURCE_ID", label: "Cajas / Turnos", required: [["Nombre", "Turno", "Caja", "Name"], ["Negocio", "Negocios", "Empresa"], ["Estado caja", "Estado de caja", "Estado"], ["Fecha apertura", "Abierta el", "Inicio", "Fecha inicio"], ["Monto inicial", "Efectivo inicial", "Saldo inicial caja"]], optional: [["Fecha cierre", "Cerrada el", "Fin", "Fecha fin"], ["Abierta por", "Usuario apertura", "Usuario"], ["Cerrada por", "Usuario cierre"], ["Cuenta efectivo", "Cuenta principal", "Cuenta"], ["Efectivo esperado", "Esperado efectivo"], ["Efectivo contado", "Contado", "Conteo efectivo"], ["Diferencia", "Diferencia caja"], ["Total ventas", "Ventas turno"], ["Notas", "Observación", "Observaciones"], ["Activo", "Activa"]], writeRequired: [] },
   { key: "CATEGORIAS_DATA_SOURCE_ID", label: "Categorías", required: [["Nombre"]], optional: [["Activa", "Activo"], ["Tipo de movimiento"]], writeRequired: [] },
   { key: "PRODUCTOS_DATA_SOURCE_ID", label: "Productos base", required: [["Nombre"]], optional: [["Negocio"], ["Activo", "Activa"], ["Orden"], ["Notas", "Nota", "Descripción", "Descripcion"]], writeRequired: [["Nombre"]] },
   { key: "VARIANTES_DATA_SOURCE_ID", label: "Variantes / Ítems vendibles", required: [["Nombre"], ["Producto base", "Producto", "Productos base"], ["Precio venta individual", "Precio venta", "Precio"], ["Costo reposición unitario", "Costo reposicion unitario", "Costo reposición", "Costo reposicion", "Costo"], ["Maneja stock", "Controla stock"]], optional: [["Negocio"], ["Variante"], ["Presentación", "Presentacion", "Formato"], ["Precio promo unitario", "Precio promo", "Precio promocional"], ["Stock actual"], ["Estado stock"], ["Stock inicial", "Stock"], ["Stock mínimo", "Stock minimo", "Mínimo", "Minimo"], ["Activo", "Activa"], ["Orden"], ["Notas", "Nota", "Descripción", "Descripcion"]], writeRequired: [["Nombre"], ["Producto base", "Producto", "Productos base"], ["Precio venta individual", "Precio venta", "Precio"], ["Costo reposición unitario", "Costo reposicion unitario", "Costo reposición", "Costo reposicion", "Costo"], ["Maneja stock", "Controla stock"]] },
@@ -25,7 +26,7 @@ export async function GET() {
   const schemas = await Promise.all(dataSources.map(async (source) => {
     const dataSourceId = getEnv(source.key);
     if (!dataSourceId || isDemoMode()) {
-      return { key: source.key, label: source.label, configured: Boolean(dataSourceId), queried: false, properties: [], missingRequired: source.required.map((candidates) => candidates.join(" / ")), missingOptional: source.optional.map((candidates) => candidates.join(" / ")), writeRequired: source.writeRequired.map((candidates) => candidates.join(" / ")), writeSupported: false, error: dataSourceId ? "No se consulta en modo demo." : "Falta el ID del data source." };
+      return { key: source.key, label: source.label, configured: Boolean(dataSourceId), queried: false, properties: [], missingRequired: source.required.map((candidates) => candidates.join(" / ")), missingOptional: source.optional.map((candidates) => candidates.join(" / ")), writeRequired: source.writeRequired.map((candidates) => candidates.join(" / ")), writeSupported: false, error: dataSourceId ? "No se consulta en modo demo." : source.key === "CAJAS_DATA_SOURCE_ID" ? "CAJAS_DATA_SOURCE_ID no está configurado." : "Falta el ID del data source." };
     }
     try {
       const schema = await getDataSourceSchema(dataSourceId);
@@ -33,7 +34,7 @@ export async function GET() {
       const missingOptional = source.optional.filter((candidates) => !pickPropertyName(schema, candidates)).map((candidates) => candidates.join(" / "));
       const missingWriteRequired = source.writeRequired.filter((candidates) => !pickPropertyName(schema, candidates)).map((candidates) => candidates.join(" / "));
       const legacyRoles = source.key === "USUARIOS_DATA_SOURCE_ID" ? await detectLegacyRoles(dataSourceId, schema) : false;
-      const warnings = source.key === "DETALLE_PRODUCTOS_DATA_SOURCE_ID" ? buildDetailWarnings(schema) : [];
+      const warnings = source.key === "DETALLE_PRODUCTOS_DATA_SOURCE_ID" ? buildDetailWarnings(schema) : source.key === "MOVIMIENTOS_DATA_SOURCE_ID" ? buildMovementWarnings(schema) : source.key === "CAJAS_DATA_SOURCE_ID" ? buildCashRegisterWarnings(schema) : [];
       return { key: source.key, label: source.label, configured: true, queried: true, properties: schemaPropertyList(schema), missingRequired, missingOptional, writeRequired: missingWriteRequired, writeSupported: missingWriteRequired.length === 0, legacyRoles, warnings, businessRelation: ["USUARIOS_DATA_SOURCE_ID", "CUENTAS_DATA_SOURCE_ID"].includes(source.key) ? Boolean(pickPropertyName(schema, ["Negocio", "Negocios", "Negocios asignados", "Empresa", "Empresas"])) : undefined };
     } catch (error) {
       return { key: source.key, label: source.label, configured: true, queried: false, properties: [], missingRequired: [], missingOptional: [], writeRequired: [], writeSupported: false, error: error instanceof Error ? error.message : "No se pudo consultar el schema." };
@@ -51,6 +52,25 @@ function buildDetailWarnings(schema: DataSourceSchema) {
   if (!pickPropertyName(schema, ["Costo reposición unitario usado", "Costo reposición snapshot", "Costo unitario usado", "Costo usado"])) warnings.push("Falta Costo reposición unitario usado. Los históricos pueden recalcularse si cambia el costo maestro.");
   if (!pickPropertyName(schema, ["Estado confirmación", "Estado de confirmación", "Confirmación", "Estado reposición"])) warnings.push("Falta Estado confirmación. No se puede gestionar reposiciones pendientes completamente.");
   if (!pickPropertyName(schema, ["Recibido por", "Usuario recepción", "Usuario recepcion", "Realizado por", "Usuario"]) || !pickPropertyName(schema, ["Confirmado por", "Usuario confirmación", "Usuario confirmacion"])) warnings.push("La auditoría de reposiciones será limitada.");
+  return warnings;
+}
+
+function buildMovementWarnings(schema: DataSourceSchema) {
+  const warnings: string[] = [];
+  if (!pickPropertyName(schema, ["Caja", "Turno caja", "Turno de caja", "Caja / Turno", "Arqueo"])) warnings.push("Movimientos no tiene relación a Caja. Las ventas se guardan, pero no quedan asociadas al turno.");
+  if (!pickPropertyName(schema, ["Monto recibido", "Paga con", "Pagó con", "Pago con", "Recibido"]) && !pickPropertyName(schema, ["Vuelto", "Cambio", "Dar vuelto"])) warnings.push("Movimientos no tiene Monto recibido/Vuelto; el vuelto se calcula pero no queda guardado.");
+  return warnings;
+}
+
+function buildCashRegisterWarnings(schema: DataSourceSchema) {
+  const warnings: string[] = [];
+  if (!pickPropertyName(schema, ["Estado caja", "Estado de caja", "Estado"])) warnings.push("Falta Estado. No se puede controlar completamente el ciclo de la caja.");
+  if (!pickPropertyName(schema, ["Fecha apertura", "Abierta el", "Inicio", "Fecha inicio"])) warnings.push("Falta Fecha apertura. La auditoría del turno será limitada.");
+  if (!pickPropertyName(schema, ["Fecha cierre", "Cerrada el", "Fin", "Fecha fin"])) warnings.push("Falta Fecha cierre. La auditoría del turno será limitada.");
+  if (!pickPropertyName(schema, ["Monto inicial", "Efectivo inicial", "Saldo inicial caja"])) warnings.push("Falta Monto inicial. No se puede calcular el efectivo esperado correctamente.");
+  if (!pickPropertyName(schema, ["Efectivo contado", "Contado", "Conteo efectivo"])) warnings.push("Falta Efectivo contado. No se podrá guardar el arqueo final.");
+  if (!pickPropertyName(schema, ["Negocio", "Negocios", "Empresa"])) warnings.push("Falta Negocio. No se puede aislar la caja por negocio de forma segura.");
+  if (!pickPropertyName(schema, ["Abierta por", "Usuario apertura", "Usuario"]) || !pickPropertyName(schema, ["Cerrada por", "Usuario cierre"])) warnings.push("Falta Abierta por/Cerrada por. La auditoría de usuarios será limitada.");
   return warnings;
 }
 

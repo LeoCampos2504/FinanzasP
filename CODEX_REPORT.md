@@ -921,6 +921,143 @@ El modo demo incluye una reposición pendiente, recepción por Vendedor, confirm
 - `git diff --check` sin errores de whitespace.
 - No se modificó `.env.local`, no se crearon secretos, no se hizo commit ni push.
 
+## MVP 6 Caja/POS local
+
+### Resumen
+
+Se implementó Caja/POS local con apertura de turno, caja activa por usuario y negocio, ventas rápidas multiítem, asociación opcional de movimientos a Caja, cierre con arqueo y listado histórico. La base `Cajas / Turnos` es opcional: el resto de la aplicación no se rompe si falta, pero Caja real muestra configuración incompleta.
+
+### Base Notion Cajas/Turnos
+
+Se agregó `CAJAS_DATA_SOURCE_ID` únicamente en `.env.example`. El helper server-side `src/lib/notion/cash-register.ts` detecta candidatos para Nombre, Negocio, Estado, fechas, usuarios, cuenta efectivo, montos, arqueo, diferencia, ventas, notas y Activo. No se envían propiedades inexistentes; las fórmulas/rollups no se intentan actualizar durante el cierre.
+
+Config advierte si faltan `Estado`, `Fecha apertura`, `Fecha cierre`, `Monto inicial`, `Efectivo contado`, `Negocio` o `Abierta por/Cerrada por`. También advierte si Movimientos no tiene relación Caja y si falta `CAJAS_DATA_SOURCE_ID`.
+
+### Apertura de caja
+
+`POST /api/caja/abrir` valida sesión, negocio activo, cuenta activa del negocio, monto inicial no negativo y ausencia de otra caja abierta para el mismo usuario/negocio. En Notion crea la página con IDs reales de relaciones. En demo conserva el estado en memoria durante la sesión de desarrollo.
+
+### POS
+
+`/pos` requiere caja abierta, permite buscar variantes activas, sumar/restar cantidades, seleccionar cuenta y finalizar una venta multiítem. `POST /api/pos/venta` valida caja, cuenta, negocio, variantes y stock; crea un Movimiento y un Detalle por ítem, conserva el snapshot de costos existente y descuenta stock. El POS tiene acceso rápido a promos, pero las promos complejas siguen en su pantalla actual.
+
+### Cierre de caja
+
+`POST /api/caja/[cashRegisterId]/cerrar` calcula ventas totales y por cuenta, ventas en la cuenta efectivo, efectivo esperado (`inicial + ventas efectivo`), efectivo contado y diferencia (`contado - esperado`). Guarda estado Cerrada, fecha/usuario de cierre y valores editables; las propiedades fórmula/rollup se dejan intactas. La pantalla `/caja` y el resumen muestran el resultado.
+
+### Asociación con movimientos
+
+Las ventas POS y las ventas normales realizadas con una caja abierta agregan la relación `Caja`, si Movimientos tiene alguna de las candidatas `Caja`, `Turno caja`, `Turno de caja`, `Caja / Turno` o `Arqueo`. También agregan `Realizado por`, `Usuario` o `Vendedor` si existe. Si falta la relación, la venta no se bloquea y devuelve: `Movimientos no tiene relación a Caja. Las ventas se guardan, pero no quedan asociadas al turno.` El resumen intenta fallback por fecha, usuario, negocio y período únicamente cuando esas relaciones permiten hacerlo de forma segura; en caso contrario queda limitado y advertido como estimado.
+
+### Permisos por rol
+
+- Admin global puede ver, abrir, cerrar y consultar cajas de cualquier negocio activo, además de vender.
+- Admin negocio puede operar y administrar cajas de su negocio, cerrar cajas de usuarios de ese negocio y vender.
+- Vendedor negocio puede abrir/cerrar su propia caja, vender y consultar sus propios cierres; no puede cerrar cajas ajenas.
+- Todos los endpoints validan sesión, rol, negocio, cuenta y caja en backend.
+
+### Demo mode
+
+El demo permite abrir caja con `Efectivo`, continuar el turno, vender una o varias variantes, descontar stock, consultar totales por cuenta, cerrar caja y verificar diferencia. El estado de cajas, ventas, stock demo y reposiciones usa un archivo temporal compartido con escrituras atómicas para que los distintos workers de Next mantengan el mismo estado durante el desarrollo.
+
+### Seguridad
+
+`NOTION_TOKEN` continúa exclusivamente server-side. No se exponen PIN hash ni secretos, no se guardan PIN en localStorage, no se borran páginas de Notion y `.env.local` no fue tocado.
+
+### Limitaciones conocidas
+
+- Sin pago dividido complejo, tickets/impresión, anulaciones o devoluciones avanzadas.
+- Sin integración real de Mercado Pago ni offline/cola de sincronización.
+- Sin multi-terminal complejo.
+- Si falta la relación Movimientos → Caja, el resumen puede ser estimado o limitado.
+- Si Notion falla después de crear el Movimiento, la API devuelve `PARTIAL_PRODUCT_CREATION`, el `movementId` y los `detailIds` creados para revisión manual.
+
+### Archivos modificados principales
+
+- `src/lib/types.ts`, `src/lib/env.ts`, `.env.example`.
+- `src/lib/notion/cash-register.ts`, `src/lib/cash-register-errors.ts`.
+- `src/lib/demo-cash-store.ts`, `src/lib/demo-replenishment-store.ts`.
+- `src/lib/notion/product-transactions.ts`, `src/lib/notion/promo-transactions.ts`.
+- `app/api/caja/actual/route.ts`, `app/api/caja/abrir/route.ts`, `app/api/cajas/route.ts`.
+- `app/api/caja/[cashRegisterId]/cerrar/route.ts`, `app/api/caja/[cashRegisterId]/resumen/route.ts`, `app/api/pos/venta/route.ts`.
+- `app/caja/page.tsx`, `app/caja/abrir/page.tsx`, `app/caja/[cashRegisterId]/cerrar/page.tsx`, `app/caja/[cashRegisterId]/resumen/page.tsx`, `app/cajas/page.tsx`, `app/pos/page.tsx`.
+- `app/api/config/status/route.ts`, `src/components/app-shell.tsx`, endpoints de venta de producto/promo y `CODEX_REPORT.md`.
+
+### Comandos ejecutados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 56 rutas App Router. Se mantuvo el warning informativo de que el plugin de Next no está detectado en la configuración de ESLint.
+- Smoke demo: apertura, bloqueo de segunda apertura, venta POS, cálculo de esperado, cierre y diferencia cero — correcto.
+- No se modificó `.env.local` y no se hizo commit ni push.
+
+### Pruebas manuales recomendadas
+
+1. Abrir Config y revisar Cajas/Turnos, propiedades detectadas y relación Movimientos → Caja.
+2. Como Vendedor, abrir caja con cuenta activa y monto inicial; intentar abrir otra y confirmar el mensaje de caja ya abierta.
+3. Entrar a `/pos`, agregar varias variantes, modificar cantidades, elegir cuenta y finalizar.
+4. Confirmar en Notion Movimiento, Detalles, relación a Caja, usuario realizado, stock descontado y snapshot de costos.
+5. Revisar `/caja`, comprobar ventas por cuenta y efectivo esperado; cerrar con arqueo exacto y con diferencia.
+6. Intentar cerrar una caja de otro usuario como Vendedor y confirmar 403; probar Admin negocio dentro de su negocio y Admin global con todos.
+7. Quitar temporalmente la relación Caja en Movimientos y confirmar warning, venta no bloqueada y resumen estimado/limitado.
+8. Probar demo abrir/vender/cerrar y verificar que el stock vuelva a reflejar la venta.
+9. Contra Notion real, validar que `CAJAS_DATA_SOURCE_ID` y todos los IDs de relaciones correspondan a páginas/data sources reales.
+
+### Pendientes próximos
+
+- Estadísticas avanzadas de caja.
+- Offline/cola sync.
+- Tickets/impresión.
+- Pago dividido.
+
+## Corrección MVP 6: Finalizar venta POS y rediseño mobile-first
+
+### Causa del bug
+
+El botón `Finalizar venta` de `app/pos/page.tsx` no tenía handler `onClick`. Por eso se mostraba como una acción disponible, pero no llamaba a `POST /api/pos/venta`, no modificaba el carrito y tampoco mostraba un error. La corrección conecta el botón con `finish`, bloquea la acción mientras guarda y procesa respuestas JSON válidas o inválidas.
+
+### Correcciones funcionales
+
+- `POST /api/pos/venta` valida sesión, rol vendedor, caja abierta y caja seleccionada, cuenta activa, fecha, cantidades, precio manual y stock.
+- En demo, el store compartido por archivo temporal evita que distintos workers de Next vean cajas/ventas diferentes. Las escrituras se hacen con archivo temporal y rename atómico.
+- En Notion, una venta POS multiítem crea un solo Movimiento y un Detalle por ítem, todos relacionados con el mismo Movimiento. La respuesta expone `movementId`, `movementIds`, `detailIds`, `cashRegisterId`, `total` y `warnings`.
+- Los errores de caja (`no encontrada`, `cerrada`, `sin permiso`) ya no se convierten en un `502` genérico. Los errores parciales conservan `movementId` y `detailIds` en `error.details`.
+- El POS no inventa propiedades: conserva la construcción schema-aware y las relaciones `Caja`/`Realizado por` se agregan solo si existen en Movimientos.
+
+### UX POS y Caja
+
+- En móvil, el catálogo ocupa la pantalla y el carrito aparece como barra inferior fija; al tocarla se abre un bottom sheet con cantidades, eliminación, cuenta destino, total y finalización.
+- En escritorio, el catálogo usa una grilla más amplia y el carrito queda en un panel lateral sticky.
+- Se agregaron búsqueda, filtros por producto base/categoría, límite visible de stock y acceso rápido a Caja, promociones y cierre.
+- La pantalla `/caja` conserva la tarjeta de caja activa, monto inicial, ventas, efectivo esperado, arqueo, diferencia y acciones de abrir/cerrar/resumen.
+
+### Archivos modificados en esta corrección
+
+- `app/pos/page.tsx`, `app/globals.css`, `src/components/app-shell.tsx`.
+- `app/api/pos/venta/route.ts`.
+- `src/lib/notion/product-transactions.ts`.
+- `src/lib/demo-pos-state.ts`, `src/lib/demo-cash-store.ts`, `src/lib/demo-replenishment-store.ts`.
+- `CODEX_REPORT.md`.
+
+### Comandos ejecutados y resultado
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 56 rutas App Router. Se mantuvo el warning informativo de que el plugin de Next no está detectado en la configuración de ESLint.
+- `git diff --check` — correcto; solo mostró advertencias informativas de conversión de finales de línea CRLF.
+- Smoke demo con Browser: `POST /api/pos/venta` respondió 200, el carrito quedó en 0, se mostró `Venta POS simulada correctamente.` y el stock del detergente bajó de 9 a 8. Con viewport móvil de 390×844 se verificó la barra fija `Carrito (1)` y el bottom sheet con cuenta, cantidades y `Finalizar venta`; el viewport fue restaurado al finalizar.
+
+### Pruebas manuales recomendadas
+
+1. En demo, iniciar sesión como Vendedor, abrir Caja y verificar que `/pos` muestre Caja abierta.
+2. Agregar dos productos, aumentar/reducir cantidades, comprobar límite de stock y seleccionar una cuenta.
+3. Tocar `Finalizar venta` y verificar que se envíe `POST /api/pos/venta`, se vacíe el carrito, se muestre confirmación y se actualice stock/total de Caja.
+4. Repetir en móvil: abrir la barra `Carrito (N)`, modificar cantidades desde el bottom sheet, cerrar y volver a abrir.
+5. Repetir en escritorio y verificar panel lateral, búsqueda, filtros y acceso a `/caja`.
+6. Contra Notion real, comprobar un Movimiento único, un Detalle por producto, relación común al Movimiento, relación a Caja si está configurada y respuesta con warnings cuando una relación opcional no existe.
+7. Simular caja inexistente/cerrada y confirmar que la UI muestre un mensaje claro sin perder el estado del carrito.
+
+
 ### Pruebas manuales recomendadas
 
 1. Como Vendedor, recibir stock y verificar que el stock sube, el costo maestro no cambia y aparece `Pendiente`.
@@ -935,3 +1072,92 @@ El modo demo incluye una reposición pendiente, recepción por Vendedor, confirm
 
 - Probar en Notion real con las propiedades nuevas creadas o con schemas legacy sin estado/snapshot para validar las advertencias específicas del workspace.
 - Si el data source de Movimientos no tiene las propiedades mínimas necesarias para un ajuste inverso, realizar el ajuste de stock manual indicado por la advertencia de rechazo.
+
+## Mejora MVP 6: Promos en POS, vuelto efectivo y vista PC global
+
+### Resumen
+
+Se amplió el alcance de la mejora anterior: el POS conserva su carrito móvil con barra inferior/bottom sheet y su carrito lateral en PC, y ahora incorpora promos fijas, pago efectivo con `Paga con`/`Vuelto` y una capa desktop general para toda la aplicación.
+
+### Promos dentro del POS
+
+- Se agregó `GET /api/pos/catalog`, que devuelve promos activas fijas con sus componentes, variantes, cantidades, precios y stock conocido.
+- `/pos` ahora tiene filtros `Todos`, `Productos` y `Promos`.
+- Las promos fijas se pueden agregar al mismo checkout que los productos normales, modificar en cantidad y eliminar.
+- La validación de stock multiplica la cantidad de cada componente por la cantidad de promos del carrito y acumula componentes repetidos antes de descontar stock.
+- En demo, la venta registra un Movimiento POS, genera detalles simulados por componente y descuenta el stock de las variantes.
+- Contra Notion, cada promo fija se guarda con `createPromoSale`, crea un Movimiento y Detalles por componentes y conserva relaciones Promo/Regla si están disponibles. Si se combinan productos y promos en un checkout real, se generan movimientos separados por tipo de transacción, todos asociados a la misma caja.
+- Las promos personalizadas con elección de variantes o total manual siguen disponibles en `/cargar/venta-promo`; no se forzó su flujo avanzado dentro del acceso rápido del POS.
+
+### Pago efectivo y vuelto
+
+- Si la cuenta coincide con la cuenta efectivo de la caja o su nombre/tipo contiene `Efectivo`, el POS muestra `Paga con` y `Vuelto`.
+- El vuelto se calcula como `Paga con - Total`, se redondea a dos decimales y el botón queda bloqueado si el importe recibido es insuficiente.
+- Para Mercado Pago, Transferencia, Débito u otra cuenta no efectivo no se muestra el bloque de vuelto.
+- El backend vuelve a validar la cuenta y el importe recibido; no confía solamente en el estado visual del cliente.
+- En Movimientos se usan, si existen, las candidatas `Monto recibido`, `Paga con`, `Pagó con`, `Pago con`, `Recibido`, `Vuelto`, `Cambio`, `Dar vuelto`, `Método de pago`, `Metodo de pago` y `Medio de pago`.
+- Si faltan esas propiedades, la venta no se bloquea y se devuelve el warning: `Movimientos no tiene Monto recibido/Vuelto; el vuelto se calculó pero no quedó guardado.`
+
+### Vista PC global
+
+La vista PC ya no depende solamente del POS. Desde 1024px se agregó una capa general en `AppShell` con sidebar persistente, navegación por permisos, header superior, contenido ancho y cards/grillas adaptables. En móvil se conserva la navegación inferior y el ancho compacto existente.
+
+Se adaptaron globalmente estas pantallas mediante `AppShell` y CSS responsive:
+
+- `/`, `/cargar`, `/movimientos`, `/productos`, `/promos`;
+- `/caja`, `/cajas`, `/pos`, `/reposiciones-pendientes`;
+- `/usuarios`, `/cuentas`, `/deudores`, `/config`;
+- formularios principales y páginas de detalle.
+
+El dashboard usa más columnas, Cargar usa grilla de acciones, filtros y listas aprovechan el ancho disponible, y productos/promos/cajas/pendientes/cuentas/deudores/usuarios se benefician del layout amplio sin alterar las reglas de permisos. El carrito POS no se rehízo: solo se extendió para incluir promos y pago efectivo.
+
+### Seguridad y compatibilidad
+
+- `NOTION_TOKEN` continúa exclusivamente server-side.
+- No se exponen hashes PIN, secretos ni datos sensibles en cliente.
+- No se guardan PIN ni secretos en localStorage.
+- No se borran páginas de Notion.
+- No se tocó `.env.local`, no se hizo commit y no se hizo push.
+- Se conservaron las restricciones de MVP 5.1/5.2 y la validación server-side de MVP 6.
+
+### Archivos modificados principales
+
+- `app/pos/page.tsx`, `app/api/pos/venta/route.ts`, `app/api/pos/catalog/route.ts`.
+- `src/lib/types.ts`, `src/lib/promo-calculations.ts`, `src/lib/notion/promo-service.ts`.
+- `src/lib/notion/product-transactions.ts`, `src/lib/notion/promo-transactions.ts`, `src/lib/notion/cash-register.ts`.
+- `app/api/config/status/route.ts`, `src/components/app-shell.tsx`, `app/globals.css`.
+- `CODEX_REPORT.md`.
+
+### Comandos ejecutados y resultados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 57 rutas App Router. Se mantuvo el warning informativo del plugin de Next no detectado en ESLint.
+- `git diff --check` — correcto; solo mostró advertencias informativas de conversión de finales de línea CRLF.
+
+### Pruebas realizadas
+
+- Demo: promo fija `Pack limpieza` visible dentro de POS, agregada al carrito y finalizada con efectivo.
+- Demo: `Paga con $6.000` sobre total `$5.000` mostró vuelto `$1.000` y descontó el componente de stock.
+- Demo: Mercado Pago no mostró `Paga con`/`Vuelto` y finalizó correctamente.
+- Demo: importe efectivo insuficiente dejó `Finalizar venta` bloqueado.
+- PC: viewport 1280×900 mostró sidebar global y dashboard ancho; el menú respetó el rol Vendedor.
+- Build de producción: se recorrieron `/`, `/cargar`, `/movimientos`, `/productos`, `/promos`, `/caja`, `/cajas`, `/pos`, `/reposiciones-pendientes`, `/cuentas`, `/deudores` y `/config` en viewport 1280×900; todas mostraron sidebar y no presentaron errores de runtime.
+- Mobile: se mantuvo el flujo de carrito bottom sheet existente.
+
+### Pruebas manuales recomendadas
+
+1. Contra Notion real, revisar una promo fija con varias reglas y verificar un Movimiento, Detalles por componentes, relaciones Promo/Regla, caja y usuario.
+2. Vender dos unidades de una promo y confirmar que el stock de cada componente se descuente dos veces.
+3. Probar efectivo con importe exacto, importe superior e importe insuficiente.
+4. Probar Mercado Pago/Transferencia/Débito y confirmar que no aparezca el vuelto.
+5. Revisar Config y comprobar las propiedades de pago detectadas y sus warnings si faltan.
+6. Abrir en navegador de PC las pantallas de dashboard, cargar, movimientos, productos, promos, caja, POS, pendientes, usuarios, cuentas, deudores y configuración.
+7. Repetir una navegación móvil y confirmar que no se rompan bottom nav, cards ni bottom sheet.
+8. Probar Admin global, Admin negocio y Vendedor para confirmar que el sidebar conserva los permisos existentes.
+
+### Pendientes
+
+- Integrar promos personalizadas complejas en el mismo carrito POS; por ahora conservan su flujo avanzado.
+- Pago dividido, tickets/impresión, devoluciones y operación offline continúan fuera de este alcance.
+- Validar contra el schema real de Movimientos las opciones disponibles para `Método de pago` si la propiedad existe como select/status.

@@ -7,13 +7,15 @@ import { formatNotionError, SchemaValidationError } from "@/lib/notion/schema";
 import { calculatePromoTotal, resolvePromoUnitPrice } from "@/lib/promo-calculations";
 import { validateStock } from "@/lib/product-calculations";
 import type { ManualPromoComponentInput, PromoSaleInput, ResolvedPromoItem } from "@/lib/types";
-import { canSell } from "@/lib/permissions";
+import { canSell, type PermissionSession } from "@/lib/permissions";
+import { getOpenCashRegisterForSession } from "@/lib/notion/cash-register";
 
 export async function POST(request: Request) {
   let session; try { session = await requireAuth(); } catch { return unauthorized(); }
   if (!canSell(session)) return forbidden();
   const body = await request.json().catch(() => ({}));
-  const input = { ...normalizeInput(body), businessId: session.activeBusinessId };
+  const baseInput = { ...normalizeInput(body), businessId: session.activeBusinessId, userId: session.userId };
+  const input = !isDemoMode() ? await attachOpenCashRegister(baseInput, session) : baseInput;
   const validation = validateInput(input);
   if (validation) return NextResponse.json({ ok: false, error: { code: "VALIDATION", message: validation } }, { status: 400 });
   if (isDemoMode()) {
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
 }
 
 function normalizeInput(body: any): PromoSaleInput { return { promoId: body.promoId ? String(body.promoId) : undefined, accountId: String(body.accountId || ""), date: String(body.date || ""), description: body.description ? String(body.description) : undefined, mode: body.mode === "custom" ? "custom" : "fixed", selectedVariantsByRuleId: body.selectedVariantsByRuleId && typeof body.selectedVariantsByRuleId === "object" ? body.selectedVariantsByRuleId : {}, manualComponents: Array.isArray(body.manualComponents) ? body.manualComponents.map((component: any): ManualPromoComponentInput => ({ variantId: String(component?.variantId || ""), quantity: Number(component?.quantity), unitPrice: component?.unitPrice === null || component?.unitPrice === undefined || component?.unitPrice === "" ? null : Number(component.unitPrice), priceMode: component?.priceMode === "Manual" ? "Manual" : "Promo" })) : [], manualTotal: body.manualTotal === null || body.manualTotal === undefined || body.manualTotal === "" ? null : Number(body.manualTotal) }; }
+async function attachOpenCashRegister(input: PromoSaleInput, session: PermissionSession) { try { const caja = await getOpenCashRegisterForSession(session); return caja ? { ...input, cashRegisterId: caja.id } : input; } catch { return input; } }
 function validateInput(input: PromoSaleInput) { if (input.mode === "fixed" && !input.promoId) return "Elegí una promo para una venta fija."; if (!input.accountId) return "Elegí una cuenta."; if (!input.date) return "La fecha es requerida."; if (input.manualTotal !== null && !(Number(input.manualTotal) > 0)) return "El total manual debe ser mayor a cero."; for (const component of input.manualComponents) { if (!component.variantId) return "Cada componente manual requiere una variante."; if (!Number.isInteger(component.quantity) || component.quantity <= 0) return "La cantidad de cada componente debe ser un entero mayor a cero."; if (component.priceMode === "Manual" && !(Number(component.unitPrice) > 0)) return "El precio manual de cada componente debe ser mayor a cero."; } return ""; }
 
 function resolveDemo(input: PromoSaleInput) {

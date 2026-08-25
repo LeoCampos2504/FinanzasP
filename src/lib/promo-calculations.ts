@@ -5,9 +5,9 @@ export function promoModeFromType(type?: string): "fixed" | "custom" {
   return value.includes("personal") || value.includes("custom") ? "custom" : "fixed";
 }
 
-export function calculatePromoTotal(mode: "fixed" | "custom", promo: Promo | undefined, items: ResolvedPromoItem[], manualTotal?: number | null) {
+export function calculatePromoTotal(mode: "fixed" | "custom", promo: Promo | undefined, items: ResolvedPromoItem[], manualTotal?: number | null, quantity = 1) {
   if (mode === "custom" && Number(manualTotal) > 0) return Math.round(Number(manualTotal) * 100) / 100;
-  if (mode === "fixed" && promo && promo.displayPrice > 0) return Math.round(promo.displayPrice * 100) / 100;
+  if (mode === "fixed" && promo && promo.displayPrice > 0) return Math.round(promo.displayPrice * Math.max(1, quantity) * 100) / 100;
   return Math.round(items.reduce((total, item) => total + item.unitPrice * item.quantity, 0) * 100) / 100;
 }
 

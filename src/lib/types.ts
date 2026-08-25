@@ -130,6 +130,116 @@ export type ProductSaleInput = {
   unitPriceMode: "individual" | "manual";
   manualUnitPrice?: number | null;
   businessId?: string;
+  cashRegisterId?: string;
+  userId?: string;
+  pos?: boolean;
+  payment?: PaymentDetails;
+};
+
+export type PaymentDetails = {
+  isCash?: boolean;
+  received?: number | null;
+  change?: number | null;
+  method?: string;
+};
+
+export type CashRegisterStatus = "Abierta" | "Cerrada" | "Cancelada";
+
+export type CashRegisterSession = {
+  id: string;
+  name: string;
+  businessId?: string;
+  status: CashRegisterStatus;
+  openedAt: string;
+  closedAt?: string;
+  openedByUserId?: string;
+  closedByUserId?: string;
+  cashAccountId?: string;
+  initialCash: number;
+  expectedCash?: number | null;
+  cashCounted?: number | null;
+  difference?: number | null;
+  totalSales?: number | null;
+  notes?: string | null;
+  warnings?: string[];
+};
+
+export type OpenCashRegisterInput = {
+  accountId: string;
+  initialCash: number;
+  notes?: string;
+};
+
+export type CloseCashRegisterInput = {
+  cashCounted: number;
+  notes?: string;
+};
+
+export type CashRegisterSale = {
+  movementId?: string;
+  accountId?: string;
+  accountName?: string;
+  total: number;
+  date: string;
+};
+
+export type CashRegisterSummary = {
+  cashRegister: CashRegisterSession;
+  totalSales: number;
+  salesByAccount: Array<{ accountId?: string; accountName: string; total: number; isCash: boolean }>;
+  cashSales: number;
+  nonCashSales: number;
+  expectedCash: number;
+  cashCounted?: number | null;
+  difference?: number | null;
+  estimated: boolean;
+  warnings: string[];
+};
+
+export type PosCartItem = {
+  variantId: string;
+  quantity: number;
+  unitPrice?: number;
+};
+
+export type PosPromoComponent = {
+  ruleId?: string;
+  variantId: string;
+  variantName: string;
+  quantity: number;
+  unitPrice: number;
+  replacementCost: number;
+  managesStock: boolean;
+  currentStock: number;
+  stockKnown?: boolean;
+};
+
+export type PosPromo = {
+  id: string;
+  name: string;
+  type?: string;
+  displayPrice: number;
+  components: PosPromoComponent[];
+  active?: boolean;
+};
+
+export type PosPromoCartItem = {
+  promoId: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type PosSaleInput = {
+  items: PosCartItem[];
+  promoItems?: PosPromoCartItem[];
+  accountId: string;
+  cashRegisterId: string;
+  date: string;
+  description?: string;
+  businessId?: string;
+  userId?: string;
+  payment?: PaymentDetails;
+  expectedTotal?: number;
 };
 
 export type ReplenishmentInput = {
@@ -231,4 +341,8 @@ export type PromoSaleInput = {
   manualComponents: ManualPromoComponentInput[];
   manualTotal?: number | null;
   businessId?: string;
+  cashRegisterId?: string;
+  userId?: string;
+  quantity?: number;
+  payment?: PaymentDetails;
 };
