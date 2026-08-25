@@ -18,3 +18,34 @@ export function getFormulaString(page: NotionPage, name: string) { return proper
 export function getRollupNumber(page: NotionPage, name: string) { return Number(property(page, name)?.rollup?.number ?? 0); }
 export function getRelationIds(page: NotionPage, name: string) { return (property(page, name)?.relation || []).map((x: any) => x.id).filter(Boolean); }
 export function getRelationId(page: NotionPage, name: string) { return getRelationIds(page, name)[0] || ""; }
+
+export function getFirstNumber(page: NotionPage, names: readonly string[]) {
+  for (const name of names) {
+    const p = property(page, name);
+    const value = p?.number ?? p?.formula?.number ?? p?.rollup?.number;
+    if (value !== null && value !== undefined) return Number(value);
+  }
+  return 0;
+}
+
+export function hasNumberProperty(page: NotionPage, names: readonly string[]) {
+  return names.some((name) => {
+    const p = property(page, name);
+    return p?.number !== undefined || p?.formula?.number !== undefined || p?.rollup?.number !== undefined;
+  });
+}
+
+export function getFirstSelect(page: NotionPage, names: readonly string[]) {
+  for (const name of names) {
+    const selected = getSelect(page, name);
+    if (selected) return selected;
+    const formula = getFormulaString(page, name);
+    if (formula) return formula;
+  }
+  return "";
+}
+
+export function getFirstCheckbox(page: NotionPage, names: readonly string[]) {
+  for (const name of names) if (property(page, name)?.checkbox !== undefined) return getCheckbox(page, name);
+  return false;
+}

@@ -1,8 +1,8 @@
-# CODEX REPORT - Finanzas El Tigre PWA
+# CODEX REPORT - Finanzas El Tigre PWA - MVP 2 Stock
 
 ## Resumen
 
-Se construyó desde cero una PWA mobile-first para controlar finanzas personales y de negocio, con login por PIN, dashboard, cuentas, movimientos, ingresos, egresos, cobros de deuda, deudores, configuración y modo demo. La integración con Notion usa REST API exclusivamente en el backend, relaciones mediante IDs de página reales y detección dinámica de propiedades del schema real antes de crear páginas.
+Se extendió la PWA mobile-first para controlar finanzas personales y de negocio con productos, variantes, stock, venta con producto y reposición. Se mantiene el MVP 1 y la integración con Notion usa REST API exclusivamente en backend, relaciones mediante IDs de página reales y detección dinámica del schema antes de crear páginas.
 
 ## Corrección de errores de schema Notion
 
@@ -23,6 +23,17 @@ La corrección implementada en `src/lib/notion/schema.ts` incluye:
 
 La pantalla Configuración consulta y muestra las propiedades detectadas de Movimientos, Deudores, Cuentas y Categorías, junto con advertencias de obligatorias y opcionales ausentes. Los mensajes de rechazo de Notion se traducen a mensajes accionables que indican revisar `Config > Propiedades detectadas`.
 
+## Alcance MVP 2
+
+- Listado de productos base y variantes/ítems vendibles.
+- Stock actual, stock mínimo, estado OK/Bajo stock/Sin unidades y filtros.
+- Venta con producto: crea Movimiento y Detalle de productos con `Sentido stock = Salida`.
+- Reposición: crea Movimiento de egreso y Detalle de productos con `Sentido stock = Entrada`.
+- Bloqueo de ventas con stock insuficiente o stock no verificable cuando la variante maneja stock.
+- Dashboard con los primeros productos bajo stock.
+- Configuración con schemas de Productos base, Variantes y Detalle de productos.
+- No se implementaron promos ni reglas de promo.
+
 ## Stack
 
 - Next.js 15 con App Router
@@ -38,11 +49,14 @@ La pantalla Configuración consulta y muestra las propiedades detectadas de Movi
 - `/login`: acceso por PIN; en modo demo acepta `1234`.
 - `/`: resumen con saldos, dona, resumen semanal, movimientos recientes y deudores pendientes.
 - `/movimientos`: listado, filtros Hoy/Semana/Mes/Todos y pestaña de análisis preparada.
-- `/cargar`: acciones MVP 1 y opciones de MVP 2 deshabilitadas.
+- `/cargar`: acciones MVP 1 más acceso a Productos y stock; promos siguen marcadas como Próximamente.
 - `/cargar/ingreso`: ingreso general, venta simple y cobro de deuda.
 - `/cargar/egreso`: gasto, retiro personal, préstamo y otro, con cuenta, categoría, ámbito y origen.
 - `/deudores`: listado, alta de deudor y acción Cobrar.
 - `/config`: estado de variables, prueba de conexión, información PWA y seguridad.
+- `/productos`: productos base, variantes, búsqueda, filtros de stock y acciones Vender/Reponer.
+- `/cargar/venta-producto`: venta por variante, cantidad, precio individual/manual, cuenta y fecha.
+- `/cargar/reposicion`: reposición por variante, costo unitario, cuenta, origen y fecha.
 
 ## API routes
 
@@ -58,6 +72,10 @@ La pantalla Configuración consulta y muestra las propiedades detectadas de Movi
 - `POST /api/movimientos/ingreso`
 - `POST /api/movimientos/egreso`
 - `POST /api/movimientos/cobro-deuda`
+- `GET /api/productos`
+- `GET /api/variantes?search=&lowStock=true&productBaseId=`
+- `POST /api/movimientos/venta-producto`
+- `POST /api/movimientos/reposicion`
 
 Todas las rutas privadas validan la cookie de sesión y responden con `{ ok, data }` o `{ ok: false, error }`.
 
@@ -77,6 +95,38 @@ Ver `.env.example`. Incluye `NOTION_TOKEN`, `NOTION_VERSION`, los IDs de data so
 
 Cuando faltan `NOTION_TOKEN` o `MOVIMIENTOS_DATA_SOURCE_ID`, la app usa datos demo locales y muestra el banner “Modo demo: faltan variables de Notion”. Las altas de movimientos y deudores se simulan con una respuesta exitosa informativa para permitir probar la UI sin configuración real.
 
+Para MVP 2 se agregaron productos base demo, variantes con stock OK/Bajo stock/Sin unidades y respuestas simuladas para venta con producto y reposición.
+
+## Notion: Movimiento + Detalle de productos
+
+La venta y la reposición consultan la variante por su page ID, obtienen sus precios y stock, consultan los schemas reales de Movimientos y Detalle de productos, y recién después construyen los payloads schema-aware. Primero se crea el Movimiento y luego el Detalle relacionado por la relación de movimiento detectada y `Variante / Ítem` detectada, siempre con page IDs reales.
+
+Corrección posterior contra el schema real: la relación de movimiento puede llamarse `Movimiento`, `Movimientos`, `Movimiento relacionado` o `Movimientos relacionados`; la relación de variante puede llamarse `Variante / Ítem`, `Variante / Item`, `Variante`, `Ítem vendible`, `Item vendible` o `Producto vendido`. El builder elige únicamente el primer nombre existente. En el caso probado, el payload final usa `Movimientos` y `Variante`:
+
+```json
+{
+  "Movimientos": { "relation": [{ "id": "MOVEMENT_PAGE_ID" }] },
+  "Variante": { "relation": [{ "id": "VARIANT_PAGE_ID" }] }
+}
+```
+
+La app no recalcula ni escribe `Stock actual`: crea el Detalle con `Afecta stock = true` y `Sentido stock = Salida` o `Entrada`, dejando que las fórmulas/rollups de Notion actualicen el stock.
+
+## Validaciones MVP 2
+
+- Variante, cuenta y fecha obligatorias.
+- Cantidad entera mayor a cero.
+- Precio manual y costo unitario mayores a cero.
+- Origen obligatorio para reposición.
+- Stock insuficiente bloqueado cuando la variante maneja stock.
+- Stock no verificable bloqueado para evitar ventas inseguras.
+- Propiedades críticas faltantes en schema generan error claro.
+- Propiedades opcionales de detalle se omiten con warning.
+
+## Riesgos conocidos
+
+Notion no tiene transacciones entre bases. Si el Movimiento se crea pero falla la creación del Detalle, la API responde `PARTIAL_PRODUCT_CREATION`, devuelve el `movementId` y un mensaje visible: “Movimiento creado, pero falló el detalle. Revisar Notion.” El movimiento no se elimina automáticamente; debe revisarse manualmente.
+
 ## PWA
 
 - `public/manifest.webmanifest`
@@ -90,11 +140,13 @@ Cuando faltan `NOTION_TOKEN` o `MOVIMIENTOS_DATA_SOURCE_ID`, la app usa datos de
 - `npm install` — correcto; instaló dependencias. npm reportó 3 vulnerabilidades high del árbol instalado y advertencias de scripts pendientes de aprobación para dependencias nativas.
 - `npm run typecheck` — correcto, `tsc --noEmit` sin errores.
 - `npm run lint` — correcto, ESLint sin errores.
-- `npm run build` — correcto; generó las 23 rutas App Router, incluyendo 13 endpoints API y las pantallas PWA.
-- `npm run dev` — correcto; servidor local levantado en `http://localhost:3000`.
-- Smoke test demo — login con PIN `1234`, dashboard demo y manifest respondieron correctamente; manifest HTTP 200.
+- `npm run build` — correcto; generó 30 rutas App Router, incluyendo endpoints de productos, variantes, venta y reposición.
+- `npm run dev -- -p 3001` — correcto; servidor local levantado en `http://localhost:3001`.
+- Smoke test local — `/login`, `/productos`, `/cargar/venta-producto`, `/cargar/reposicion` y manifest respondieron HTTP 200; `/api/variantes` sin sesión respondió HTTP 401.
 
 El build deja un aviso informativo de Next indicando que su plugin ESLint no fue detectado por su integración interna; no impide el build y el comando `npm run lint` pasa correctamente.
+
+Validación de esta corrección de filtros: `npm run typecheck` ✅, `npm run lint` ✅ y `npm run build` ✅ con 30 rutas generadas. No se tocó `.env.local` ni se hicieron escrituras de prueba en Notion.
 
 ## Validación específica recomendada contra Notion real
 
@@ -113,9 +165,10 @@ El build deja un aviso informativo de Next indicando que su plugin ESLint no fue
 - Configuración: `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `.gitignore`, `.env.example`.
 - App Router: `app/layout.tsx`, `app/globals.css`, `app/page.tsx` y las páginas de login, movimientos, carga, egresos, deudores y configuración.
 - API: `app/api/**` para auth, configuración, dashboard, cuentas, categorías, deudores y movimientos.
-- Backend Notion: `src/lib/notion/client.ts`, `normalize.ts`, `properties.ts`, `domain.ts`, `mappers.ts`.
-- Seguridad y dominio: `src/lib/auth.ts`, `src/lib/env.ts`, `src/lib/types.ts`, `src/lib/demo-data.ts`, `src/lib/format.ts`.
-- Componentes: `src/components/app-shell.tsx`, `movement-row.tsx`, `stat-card.tsx`, `pwa-register.tsx`.
+- Backend Notion: `src/lib/notion/client.ts`, `normalize.ts`, `properties.ts`, `domain.ts`, `mappers.ts`, `schema.ts`, `product-mappers.ts`, `product-transactions.ts`.
+- Cálculos y dominio: `src/lib/product-calculations.ts`, `src/lib/stock.ts`, `src/lib/auth.ts`, `src/lib/env.ts`, `src/lib/types.ts`, `src/lib/demo-data.ts`, `src/lib/format.ts`.
+- Componentes: `src/components/app-shell.tsx`, `movement-row.tsx`, `product-picker.tsx`, `stat-card.tsx`, `pwa-register.tsx`.
+- MVP 2 UI/API: `app/productos/page.tsx`, `app/cargar/venta-producto/page.tsx`, `app/cargar/reposicion/page.tsx`, `app/api/productos/route.ts`, `app/api/variantes/route.ts`, `app/api/movimientos/venta-producto/route.ts`, `app/api/movimientos/reposicion/route.ts`.
 - PWA: `public/manifest.webmanifest`, `public/sw.js`, `public/icon.svg`.
 
 ## Cómo probar manualmente
@@ -132,12 +185,47 @@ El build deja un aviso informativo de Next indicando que su plugin ESLint no fue
 
 Sin variables, usar PIN `1234` para probar el modo demo.
 
-## Pendientes MVP 2
+## Pruebas manuales recomendadas
 
-- Venta con producto
-- Descuento automático de stock
-- Reposición con detalle de productos
+1. Abrir Configuración y verificar que Productos, Variantes y Detalle de productos aparezcan como “Consultado”.
+2. Revisar propiedades críticas detectadas y warnings opcionales.
+3. Abrir `/productos` y buscar una variante.
+4. Filtrar Bajo stock y Sin unidades.
+5. Crear una venta con producto.
+6. Revisar en Notion que se creó Movimiento de ingreso.
+7. Revisar Detalle de productos con `Sentido stock = Salida`.
+8. Confirmar que Stock actual bajó mediante el rollup/fórmula de Notion.
+9. Crear una reposición.
+10. Revisar Movimiento `Tipo = Egreso`, `Subtipo = Reposición`.
+11. Revisar Detalle con `Sentido stock = Entrada`.
+12. Confirmar que Stock actual subió.
+13. Probar stock insuficiente y verificar el bloqueo.
+14. Simular un fallo de Detalle y verificar que se muestre el movement ID.
+
+## Corrección específica de schema
+
+La causa del error fue que la app exigía únicamente `Movimiento`, mientras que el data source real exponía `Movimientos`. Config ahora considera cubierta la relación si detecta cualquiera de los candidatos definidos y muestra la propiedad real detectada, sin marcar “Movimiento” como faltante. Venta y reposición comparten el mismo builder, por lo que ambos usan la corrección.
+
+## Corrección de filtros de stock
+
+La causa del bug era comparar etiquetas visibles exactas (`Bajo stock`, `Sin unidades`) mientras Notion puede devolver fórmulas/string con emojis, mayúsculas o variantes como `Sin unidad` y `Sin stock`.
+
+Se agregó `src/lib/stock.ts` con la función pura `normalizeStockStatus`, que devuelve `ok`, `low`, `empty`, `not_managed` o `unknown`. El mapper conserva el valor original en `stockStatusRaw` y usa esta prioridad:
+
+- `Maneja stock = false` → `not_managed`.
+- `Maneja stock = true` y stock actual `<= 0` → `empty`.
+- `Maneja stock = true` y stock actual `<= Stock mínimo` → `low`.
+- `Maneja stock = true` y stock actual mayor al mínimo → `ok`.
+- Si faltan números confiables, se normaliza el texto de `Estado stock`.
+
+`GET /api/variantes` acepta `stockStatus=low` y `stockStatus=empty`; `lowStock=true` se mantiene como alias compatible de `stockStatus=low`. `/productos` usa esos filtros y también valida localmente el estado normalizado. El Dashboard incluye únicamente `low` y `empty`, nunca `not_managed`.
+
+## Pendientes MVP 3
+
 - Promo fija
 - Promo personalizada
+- Reglas de promo
+- Estadísticas avanzadas
+- Modo offline
 
 No se hizo commit ni push.

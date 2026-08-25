@@ -1,4 +1,4 @@
-import type { Account, Category, Debtor, Movement } from "@/lib/types";
+import type { Account, Category, Debtor, Movement, ProductBase, SellableVariant } from "@/lib/types";
 
 export const demoAccounts: Account[] = [
   { id: "demo-cash", name: "Efectivo", balance: 186500, primary: true },
@@ -18,4 +18,13 @@ export const demoCategories: Category[] = [
   { id: "demo-cat-1", name: "Insumos", type: "Egreso" },
   { id: "demo-cat-2", name: "Transporte", type: "Egreso" },
   { id: "demo-cat-3", name: "Servicios", type: "Egreso" },
+];
+export const demoProducts: ProductBase[] = [
+  { id: "demo-product-1", name: "Detergente", active: true },
+  { id: "demo-product-2", name: "Lavandina", active: true },
+];
+export const demoVariants: SellableVariant[] = [
+  { id: "demo-variant-1", name: "Detergente clásico 1L", productBaseId: "demo-product-1", productBaseName: "Detergente", variant: "Clásico", presentation: "1 litro", salePrice: 4200, promoPrice: 0, replacementCost: 2500, managesStock: true, initialStock: 24, minimumStock: 8, currentStock: 5, stockStatus: "low", stockStatusRaw: "⚠️ Bajo stock", active: true, stockKnown: true },
+  { id: "demo-variant-2", name: "Lavandina concentrada 2L", productBaseId: "demo-product-2", productBaseName: "Lavandina", variant: "Concentrada", presentation: "2 litros", salePrice: 3900, promoPrice: 0, replacementCost: 2100, managesStock: true, initialStock: 18, minimumStock: 5, currentStock: 0, stockStatus: "empty", stockStatusRaw: "❌ Sin unidades", active: true, stockKnown: true },
+  { id: "demo-variant-3", name: "Esponja multiuso", productBaseId: "demo-product-1", productBaseName: "Detergente", variant: "Multiuso", presentation: "Unidad", salePrice: 1200, promoPrice: 0, replacementCost: 650, managesStock: false, initialStock: 0, minimumStock: 0, currentStock: 0, stockStatus: "not_managed", stockStatusRaw: "➖ Sin stock", active: true, stockKnown: false },
 ];

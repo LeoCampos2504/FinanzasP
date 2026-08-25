@@ -30,3 +30,67 @@ export type Debtor = {
 };
 
 export type Category = { id: string; name: string; type?: string; active?: boolean };
+
+import type { NormalizedStockStatus } from "@/lib/stock";
+export type StockStatus = NormalizedStockStatus;
+
+export type ProductBase = {
+  id: string;
+  name: string;
+  businessId?: string;
+  active?: boolean;
+  order?: number;
+  notes?: string;
+};
+
+export type SellableVariant = {
+  id: string;
+  name: string;
+  productBaseId?: string;
+  productBaseName?: string;
+  variant?: string;
+  presentation?: string;
+  salePrice: number;
+  promoPrice: number;
+  replacementCost: number;
+  managesStock: boolean;
+  initialStock: number;
+  minimumStock: number;
+  currentStock: number;
+  stockStatus: StockStatus;
+  stockStatusRaw: string;
+  active?: boolean;
+  stockKnown?: boolean;
+};
+
+export type ProductDetail = {
+  id?: string;
+  name: string;
+  movementId?: string;
+  variantId: string;
+  quantity: number;
+  unitPriceMode: "Individual" | "Manual";
+  manualUnitPrice?: number;
+  affectsStock: boolean;
+  stockDirection: "Entrada" | "Salida";
+};
+
+export type ProductSaleInput = {
+  variantId: string;
+  quantity: number;
+  accountId: string;
+  date: string;
+  description?: string;
+  unitPriceMode: "individual" | "manual";
+  manualUnitPrice?: number | null;
+};
+
+export type ReplenishmentInput = {
+  variantId: string;
+  quantity: number;
+  accountId: string;
+  date: string;
+  unitCost: number;
+  origin: "Fondo reposición" | "Ganancias" | "Inversión / capital" | "No aplica";
+  description?: string;
+};

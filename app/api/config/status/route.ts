@@ -9,6 +9,9 @@ const dataSources = [
   { key: "DEUDORES_DATA_SOURCE_ID", label: "Deudores", required: [["Nombre"], ["Activo", "Activa"]], optional: [["Negocio"], ["Notas", "Nota", "Descripción", "Descripcion"]] },
   { key: "CUENTAS_DATA_SOURCE_ID", label: "Cuentas", required: [["Nombre"]], optional: [["Activa", "Activo"], ["Saldo esperado"], ["Saldo inicial"]] },
   { key: "CATEGORIAS_DATA_SOURCE_ID", label: "Categorías", required: [["Nombre"]], optional: [["Activa", "Activo"], ["Tipo de movimiento"]] },
+  { key: "PRODUCTOS_DATA_SOURCE_ID", label: "Productos base", required: [["Nombre"]], optional: [["Negocio"], ["Activo", "Activa"], ["Orden"], ["Notas", "Nota", "Descripción", "Descripcion"]] },
+  { key: "VARIANTES_DATA_SOURCE_ID", label: "Variantes / Ítems vendibles", required: [["Nombre"], ["Precio venta individual"], ["Costo reposición unitario"], ["Stock actual"], ["Estado stock"], ["Maneja stock"]], optional: [["Producto base"], ["Negocio"], ["Variante"], ["Presentación"], ["Precio promo unitario"], ["Stock inicial"], ["Stock mínimo"], ["Activo", "Activa"], ["Orden"], ["Notas", "Nota", "Descripción", "Descripcion"]] },
+  { key: "DETALLE_PRODUCTOS_DATA_SOURCE_ID", label: "Detalle de productos", required: [["Nombre"], ["Movimiento", "Movimientos", "Movimiento relacionado", "Movimientos relacionados"], ["Variante / Ítem", "Variante / Item", "Variante", "Ítem vendible", "Item vendible", "Producto vendido"], ["Cantidad"], ["Modo de precio"], ["Afecta stock"], ["Sentido stock"], ["Activo"]], optional: [["Negocio"], ["Precio unitario manual"], ["Precio venta individual"], ["Precio promo unitario"], ["Costo reposición unitario"], ["Precio unitario usado"], ["Subtotal venta"], ["Subtotal costo reposición"], ["Cantidad entrada"], ["Cantidad salida"], ["Orden"], ["Notas", "Nota", "Descripción", "Descripcion"]] },
 ] as const;
 
 export async function GET() {
