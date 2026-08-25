@@ -23,6 +23,7 @@ export function mapSellableVariant(page: any, productNames = new Map<string, str
   return {
     id: page.id,
     name: getFirstTitle(page, ["Nombre", "Name"]),
+    businessId: getRelationId(page, "Negocio") || getRelationId(page, "Negocios"),
     productBaseId: getRelationId(page, "Producto base") || getRelationId(page, "Producto") || getRelationId(page, "Productos base"),
     productBaseName: productNames.get(getRelationId(page, "Producto base") || getRelationId(page, "Producto") || getRelationId(page, "Productos base")),
     variant: getFirstSelect(page, ["Variante"]) || getRichText(page, "Variante"),

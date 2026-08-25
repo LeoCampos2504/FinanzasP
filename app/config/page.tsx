@@ -17,6 +17,7 @@ type SchemaStatus = {
   writeRequired?: string[];
   writeSupported?: boolean;
   error?: string;
+  warnings?: string[];
   legacyRoles?: boolean;
   businessRelation?: boolean;
 };
@@ -61,6 +62,7 @@ export default function ConfigPage() {
     {schemas.map((schema) => <div className="card dashboard-card" style={{ marginBottom: 12 }} key={schema.key}>
       <div className="inline-row"><h3 style={{ margin: 0, fontSize: 15 }}>{schema.label}</h3><span className={`status-pill ${schema.queried ? "ok" : "missing"}`}>{schema.queried ? "Consultado" : schema.configured ? "No consultado" : "Sin ID"}</span></div>
       {schema.error && <div className="alert error">{schema.error}</div>}
+      {schema.warnings?.map((warning) => <div className="alert info" key={`${schema.key}-${warning}`}>{warning}</div>)}
       {schema.legacyRoles && <div className="alert info">Se detectaron roles legacy. Recomendado migrar a Admin global, Admin negocio o Vendedor negocio.</div>}
       {schema.businessRelation === false && schema.key === "USUARIOS_DATA_SOURCE_ID" && <div className="alert info">Usuarios no tiene relación a Negocios. Se usa negocio por defecto.</div>}
       {schema.businessRelation === false && schema.key === "CUENTAS_DATA_SOURCE_ID" && <div className="alert info">Cuentas no tiene relación a Negocios. No se puede aislar cuentas por negocio todavía.</div>}

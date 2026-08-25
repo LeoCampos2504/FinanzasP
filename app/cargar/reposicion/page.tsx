@@ -16,20 +16,25 @@ export default function ReplenishmentPage() {
     accountId: "",
     date: today(),
     unitCost: "",
+    reportedCost: "",
+    updateMasterCost: false,
     origin: "",
     description: "",
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [session, setSession] = useState<{ role?: string } | null>(null);
   useEffect(() => {
     const initial =
       new URLSearchParams(window.location.search).get("variant") || "";
     setForm((f) => ({ ...f, variantId: initial }));
-    Promise.all([fetch("/api/variantes"), fetch("/api/cuentas")]).then(
-      async ([v, a]) => {
+    Promise.all([fetch("/api/variantes"), fetch("/api/cuentas"), fetch("/api/auth/session")]).then(
+      async ([v, a, s]) => {
         const vb = await v.json();
         const ab = await a.json();
+        const sb = await s.json();
+        setSession(sb.data?.session || null);
         if (vb.ok) setVariants(vb.data);
         if (ab.ok) {
           setAccounts(ab.data);
@@ -42,6 +47,7 @@ export default function ReplenishmentPage() {
     );
   }, []);
   const selected = variants.find((item) => item.id === form.variantId);
+  const isSeller = session?.role === "Vendedor negocio";
   const total = useMemo(
     () =>
       Math.round(
@@ -72,6 +78,9 @@ export default function ReplenishmentPage() {
         ...form,
         quantity: Number(form.quantity),
         unitCost: Number(form.unitCost),
+        reportedCost: form.reportedCost ? Number(form.reportedCost) : null,
+        notes: form.description,
+        updateMasterCost: !isSeller && form.updateMasterCost,
       }),
     }).then((r) => r.json());
     setSaving(false);
@@ -83,11 +92,12 @@ export default function ReplenishmentPage() {
         (b.error?.message || "No se pudo guardar la reposición.") + partial,
       );
     }
-    setMessage(b.meta?.message || "Reposición guardada correctamente.");
+    setMessage(b.meta?.message || (isSeller ? "Stock cargado. Quedó pendiente de confirmación del Admin." : "Reposición guardada correctamente."));
     setTimeout(() => router.push("/productos"), 900);
   }
   return (
-    <AppShell title="Reposición" showFab={false}>
+    <AppShell title={isSeller ? "Recibir stock" : "Reposición"} showFab={false}>
+      {isSeller && <div className="alert info">La reposición quedará pendiente de confirmación del Admin negocio.</div>}
       <form className="card form-card" onSubmit={submit}>
         <ProductPicker
           variants={variants}
@@ -115,7 +125,7 @@ export default function ReplenishmentPage() {
           />
         </div>
         <div className="form-field">
-          <label htmlFor="replenishment-cost">Costo unitario</label>
+          <label htmlFor="replenishment-cost">{isSeller ? "Costo actual registrado" : "Costo usado"}</label>
           <input
             id="replenishment-cost"
             required
@@ -123,9 +133,11 @@ export default function ReplenishmentPage() {
             step="1"
             type="number"
             value={form.unitCost}
+            readOnly={isSeller}
             onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
           />
         </div>
+        {isSeller ? <div className="form-field"><label htmlFor="replenishment-new-cost">Costo nuevo informado <span className="muted">(opcional)</span></label><input id="replenishment-new-cost" min="0.01" step="0.01" type="number" value={form.reportedCost || ""} onChange={(e) => setForm({ ...form, reportedCost: e.target.value })} placeholder="Si cambió el precio del proveedor" /></div> : <label className="check-row"><input type="checkbox" checked={Boolean(form.updateMasterCost)} onChange={(e) => setForm({ ...form, updateMasterCost: e.target.checked })} /> Actualizar costo maestro para futuras operaciones</label>}
         <div className="form-field">
           <label htmlFor="replenishment-account">Cuenta de salida</label>
           <select
@@ -175,7 +187,7 @@ export default function ReplenishmentPage() {
         </div>
         <div className="form-field">
           <label htmlFor="replenishment-description">
-            Descripción <span className="muted">(opcional)</span>
+            Observación <span className="muted">(opcional)</span>
           </label>
           <textarea
             id="replenishment-description"
@@ -190,7 +202,7 @@ export default function ReplenishmentPage() {
         {error && <div className="alert error">{error}</div>}
         {message && <div className="alert success">{message}</div>}
         <button className="primary-btn" disabled={saving}>
-          {saving ? "Guardando…" : "Guardar reposición"}
+          {saving ? "Guardando…" : isSeller ? "Cargar stock pendiente" : "Guardar reposición"}
         </button>
       </form>
     </AppShell>

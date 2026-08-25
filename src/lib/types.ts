@@ -73,6 +73,7 @@ export type ProductBaseInput = {
 export type SellableVariant = {
   id: string;
   name: string;
+  businessId?: string;
   productBaseId?: string;
   productBaseName?: string;
   variant?: string;
@@ -116,6 +117,8 @@ export type ProductDetail = {
   manualUnitPrice?: number;
   affectsStock: boolean;
   stockDirection: "Entrada" | "Salida";
+  replacementCostSnapshot?: number | null;
+  confirmationStatus?: string;
 };
 
 export type ProductSaleInput = {
@@ -138,6 +141,32 @@ export type ReplenishmentInput = {
   origin: "Fondo reposición" | "Ganancias" | "Inversión / capital" | "No aplica";
   description?: string;
   businessId?: string;
+  reportedCost?: number | null;
+  confirmationStatus?: "No requiere" | "Pendiente" | "Confirmado" | "Rechazado";
+  receivedByUserId?: string;
+  confirmedByUserId?: string;
+  updateMasterCost?: boolean;
+  notes?: string;
+};
+
+export type PendingReplenishment = {
+  id: string;
+  movementId?: string;
+  variantId: string;
+  variantName: string;
+  businessId?: string;
+  date: string;
+  quantity: number;
+  currentCost: number;
+  costUsed?: number | null;
+  reportedCost?: number | null;
+  confirmationStatus: "Pendiente" | "Confirmado" | "Rechazado" | "No requiere";
+  notes?: string | null;
+  receivedByUserId?: string;
+  confirmedByUserId?: string;
+  confirmedAt?: string;
+  reversalMovementId?: string;
+  warnings?: string[];
 };
 
 export type Promo = {

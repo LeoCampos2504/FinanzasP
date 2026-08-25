@@ -859,3 +859,79 @@ La autorización estaba concentrada en permisos generales de administración y n
 - No se exponen PIN hash ni secretos.
 - `.env.local` no fue modificado.
 - No se hizo commit ni push.
+
+## MVP 5.2: reposiciones pendientes, confirmación Admin y snapshot de costos
+
+### Causa y alcance
+
+La reposición podía incrementar stock sin distinguir entre recepción operativa y aprobación administrativa. Además, el costo histórico de una venta o reposición podía depender del costo maestro vigente en vez de quedar guardado en el detalle. Se implementó un flujo explícito con estados `Pendiente`, `Confirmado`, `Rechazado` y `No requiere`, validado contra el schema real de Notion.
+
+### Flujo implementado
+
+- Vendedor negocio: recibe stock inmediatamente, crea Movimiento/Detalle con `Sentido stock = Entrada`, estado `Pendiente`, usuario receptor, costo informado opcional y observación. No puede actualizar el costo maestro.
+- Admin global/Admin negocio: consulta `/reposiciones-pendientes`, limitado al negocio cuando corresponde, y puede confirmar usando el costo actual informado o actualizar también el costo maestro.
+- Confirmación: guarda el costo final usado, estado `Confirmado`, fecha, usuario confirmador y notas cuando esas propiedades existen.
+- Rechazo: no elimina páginas. Primero intenta crear un movimiento y detalle inversos con `Sentido stock = Salida`; si el schema real no permite el ajuste automático, conserva el rechazo y devuelve una advertencia para ajuste manual.
+
+### Estrategia de snapshot
+
+Las ventas de producto y promo guardan el costo de reposición vigente al momento de la operación en `Costo reposición unitario usado`, si existe una propiedad candidata compatible. Las reposiciones guardan inicialmente el costo unitario recibido y, al confirmar, lo reemplazan por `costUsed`. El costo maestro solo cambia cuando un Admin lo solicita expresamente; los históricos mantienen su snapshot y no se recalculan por cambios posteriores.
+
+### Schema y Config
+
+Se centralizaron candidatos para estado, costo snapshot, costo informado, auditoría, movimiento, variante y negocio en `src/lib/notion/replenishment-approval.ts`. No se envían propiedades inventadas: `buildSchemaAwareProperties` selecciona únicamente nombres presentes en el data source. Config detecta y advierte:
+
+- `Falta Costo reposición unitario usado. Los históricos pueden recalcularse si cambia el costo maestro.`
+- `Falta Estado confirmación. No se puede gestionar reposiciones pendientes completamente.`
+- `La auditoría de reposiciones será limitada.`
+
+### Rutas y permisos
+
+- `GET /api/reposiciones-pendientes`
+- `POST /api/reposiciones-pendientes/[detailId]/confirmar`
+- `POST /api/reposiciones-pendientes/[detailId]/rechazar`
+- Pantalla `/reposiciones-pendientes`, visible y accesible solo para Admin global/Admin negocio.
+- `/cargar/reposicion` adapta el formulario para recepción de Vendedor y confirmación directa de Admin.
+- Los endpoints vuelven a validar sesión y rol; el token de Notion permanece server-side y no se exponen hashes PIN.
+
+### Demo
+
+El modo demo incluye una reposición pendiente, recepción por Vendedor, confirmación con actualización de costo maestro y rechazo con ajuste inverso. El estado compartido de demo se mantiene entre handlers para que el flujo completo funcione también durante pruebas locales.
+
+### Archivos principales
+
+- `src/lib/notion/replenishment-approval.ts`
+- `src/lib/notion/product-transactions.ts`
+- `src/lib/notion/promo-transactions.ts`
+- `src/lib/demo-replenishment-store.ts`
+- `app/api/reposiciones-pendientes/route.ts`
+- `app/api/reposiciones-pendientes/[detailId]/confirmar/route.ts`
+- `app/api/reposiciones-pendientes/[detailId]/rechazar/route.ts`
+- `app/reposiciones-pendientes/page.tsx`
+- `app/cargar/reposicion/page.tsx`
+- `app/api/config/status/route.ts`, `app/config/page.tsx`
+- `src/lib/types.ts`, `src/lib/permissions.ts`, `src/components/app-shell.tsx`
+
+### Comandos y resultados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 48 rutas App Router. Se mantuvo el warning informativo de que el plugin de Next no está detectado en la configuración de ESLint.
+- Smoke demo limpio en puerto aislado, con `NOTION_TOKEN` vacío solo para el proceso: login Admin/Vendedor 200; Vendedor en Pendientes 403; confirmación 200; recepción pendiente 200; rechazo 200 con `reversalMovementId`; stock demo compensado al finalizar.
+- `git diff --check` sin errores de whitespace.
+- No se modificó `.env.local`, no se crearon secretos, no se hizo commit ni push.
+
+### Pruebas manuales recomendadas
+
+1. Como Vendedor, recibir stock y verificar que el stock sube, el costo maestro no cambia y aparece `Pendiente`.
+2. Como Admin negocio, abrir Pendientes y confirmar solo registros de su negocio.
+3. Confirmar una reposición sin actualizar maestro y otra actualizando maestro; comprobar snapshots distintos en históricos.
+4. Rechazar una reposición y verificar el detalle/movimiento inverso o la advertencia de ajuste manual.
+5. Como Admin global, comprobar acceso a todos los negocios; como Vendedor, comprobar 403 por UI y URL directa.
+6. En Config, verificar propiedades detectadas y las tres advertencias cuando falten propiedades opcionales/auditoría.
+7. Contra Notion real, revisar que los nombres usados coincidan con el schema de cada data source y que no se envíen propiedades ausentes.
+
+### Pendientes conocidos
+
+- Probar en Notion real con las propiedades nuevas creadas o con schemas legacy sin estado/snapshot para validar las advertencias específicas del workspace.
+- Si el data source de Movimientos no tiene las propiedades mínimas necesarias para un ajuste inverso, realizar el ajuste de stock manual indicado por la advertencia de rechazo.

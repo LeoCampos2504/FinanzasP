@@ -1,6 +1,6 @@
 export const roles = ["Admin global", "Admin negocio", "Vendedor negocio"] as const;
 export type AppRole = (typeof roles)[number];
-export type PermissionSession = { role: string; businessIds?: string[]; activeBusinessId?: string };
+export type PermissionSession = { userId?: string; role: string; businessIds?: string[]; activeBusinessId?: string };
 export type ManagedUser = { role: string; businessIds?: string[]; id?: string };
 
 export function normalizeRole(role: unknown): AppRole {

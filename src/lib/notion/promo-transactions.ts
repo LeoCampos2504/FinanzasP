@@ -8,6 +8,7 @@ import { loadPromoContext, PromoOperationError, resolveManualPromoComponents, re
 import { calculatePromoTotal } from "@/lib/promo-calculations";
 import type { PromoSaleInput, ResolvedPromoItem } from "@/lib/types";
 import { AccountOperationError, assertActiveAccount } from "@/lib/notion/account-service";
+import { detailApprovalCandidates } from "@/lib/notion/replenishment-approval";
 
 export class PartialPromoCreationError extends PromoOperationError {
   constructor(message: string, details: Record<string, unknown>) { super("PARTIAL_PROMO_CREATION", message, details); }
@@ -54,6 +55,7 @@ export async function createPromoSale(input: PromoSaleInput) {
       const preferredMode = item.unitPriceMode === "Sin precio" ? ["Sin precio", "Promo", "Manual"] : item.unitPriceMode === "Manual" ? ["Manual", "Promo", "Sin precio"] : ["Promo", "Manual", "Sin precio"];
       const detailBuilt = buildSchemaAwareProperties(detailSchema, "Detalle de productos", {
         name: { candidates: ["Nombre"], value: title(`${item.variantName} · ${promoName} x${item.quantity}`), required: true }, movement: { candidates: movementCandidates, value: relation(String(movement.id)), required: true, label: "relación movimiento" }, business: { candidates: ["Negocio"], value: businessId ? relation(businessId) : undefined, required: Boolean(businessId), label: "Negocio" }, variant: { candidates: variantCandidates, value: relation(item.variantId), required: true, label: "relación variante" }, promo: { candidates: ["Promo", "Promos"], value: input.promoId ? relation(input.promoId) : undefined, label: "Promo" }, rule: { candidates: ["Regla de promo", "Reglas de promo", "Regla"], value: item.ruleId ? relation(item.ruleId) : undefined, label: "Regla de promo" }, quantity: { candidates: ["Cantidad"], value: number(item.quantity), required: true }, priceMode: { candidates: ["Modo de precio"], value: select(pickSelectOption(detailSchema, ["Modo de precio"], preferredMode)), required: true }, manualPrice: { candidates: ["Precio unitario manual"], value: item.manualUnitPrice ? number(item.manualUnitPrice) : undefined, required: item.unitPriceMode === "Manual", label: "Precio unitario manual" }, affectsStock: { candidates: ["Afecta stock"], value: checkbox(true), required: true }, stockDirection: { candidates: ["Sentido stock"], value: select("Salida"), required: true }, active: { candidates: ["Activo"], value: checkbox(true), required: true },
+        costSnapshot: { candidates: detailApprovalCandidates.costUsed, value: number(item.replacementCost), label: "Costo reposición unitario usado" },
       });
       const detail = await createPage(detailId, detailBuilt.properties); createdDetails.push(String(detail.id)); detailWarnings.push(...detailBuilt.warnings);
     } catch (error) { if (error instanceof SchemaValidationError) throw error; failedDetails.push({ name: item.variantName, cause: error instanceof Error ? error.message : String(error) }); }
