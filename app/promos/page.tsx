@@ -1,0 +1,13 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
+import { ars } from "@/lib/format";
+import type { Promo } from "@/lib/types";
+
+export default function PromosPage() {
+  const router = useRouter();
+  const [promos, setPromos] = useState<Promo[]>([]); const [search, setSearch] = useState(""); const [type, setType] = useState(""); const [demo, setDemo] = useState(false); const [error, setError] = useState("");
+  useEffect(() => { const params = new URLSearchParams({ ...(search ? { search } : {}), ...(type ? { type } : {}) }); fetch(`/api/promos?${params}`).then(async (response) => { const body = await response.json(); if (body.ok) { setPromos(body.data); setDemo(Boolean(body.meta?.demo)); } else setError(body.error?.message || "No se pudieron cargar las promos."); }).catch(() => setError("No se pudieron cargar las promos.")); }, [search, type]);
+  return <AppShell title="Promos" demo={demo}><div className="form-field" style={{ marginTop: 14 }}><label htmlFor="promo-search">Buscar promo</label><input id="promo-search" placeholder="Nombre o tipo" value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="filter-scroll"><button className={`filter-chip ${!type ? "active" : ""}`} onClick={() => setType("")}>Todas</button><button className={`filter-chip ${type === "fija" ? "active" : ""}`} onClick={() => setType("fija")}>Fijas</button><button className={`filter-chip ${type === "personal" ? "active" : ""}`} onClick={() => setType("personal")}>Personalizadas</button></div>{error && <div className="alert error">{error}</div>}<div className="product-list" style={{ marginTop: 14 }}>{promos.map((promo) => <article className="card product-card" key={promo.id}><div className="inline-row"><div><strong>{promo.name}</strong><span className="product-subtitle">{promo.type || "Promo"}</span></div><span className="badge">Activa</span></div><div className="stock-grid"><div><span>Precio mostrado</span><strong className="money">{promo.displayPrice > 0 ? ars(promo.displayPrice) : "Sin precio definido"}</strong></div><div><span>Origen</span><strong>{promo.priceSource === "none" ? "Componentes / manual" : promo.priceSource}</strong></div></div><button className="primary-btn" onClick={() => router.push(`/cargar/venta-promo?promo=${encodeURIComponent(promo.id)}`)}>Vender promo</button></article>)}{!promos.length && !error && <div className="card dashboard-card"><p className="small muted" style={{ margin: 0 }}>No hay promos activas para mostrar.</p></div>}</div></AppShell>;
+}

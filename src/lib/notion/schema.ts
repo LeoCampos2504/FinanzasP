@@ -57,6 +57,13 @@ export function pickPropertyName(schema: DataSourceSchema, candidates: readonly 
   return candidates.find((candidate) => hasProperty(schema, candidate));
 }
 
+export function pickSelectOption(schema: DataSourceSchema, candidates: readonly string[], preferred: readonly string[]) {
+  const propertyName = pickPropertyName(schema, candidates);
+  const options: Array<{ name?: string }> = propertyName ? ((schema.properties[propertyName].select as { options?: Array<{ name?: string }> } | undefined)?.options || []) : [];
+  if (!options.length) return preferred[0] || "";
+  return preferred.find((value) => options.some((option) => option.name === value)) || options[0]?.name || preferred[0] || "";
+}
+
 export function buildSchemaAwareProperties(
   schema: DataSourceSchema,
   dataSourceLabel: string,

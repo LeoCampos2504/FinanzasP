@@ -1,4 +1,4 @@
-import type { Account, Category, Debtor, Movement, ProductBase, SellableVariant } from "@/lib/types";
+import type { Account, Category, Debtor, Movement, ProductBase, Promo, PromoRule, SellableVariant } from "@/lib/types";
 
 export const demoAccounts: Account[] = [
   { id: "demo-cash", name: "Efectivo", balance: 186500, primary: true },
@@ -24,7 +24,18 @@ export const demoProducts: ProductBase[] = [
   { id: "demo-product-2", name: "Lavandina", active: true },
 ];
 export const demoVariants: SellableVariant[] = [
-  { id: "demo-variant-1", name: "Detergente clásico 1L", productBaseId: "demo-product-1", productBaseName: "Detergente", variant: "Clásico", presentation: "1 litro", salePrice: 4200, promoPrice: 0, replacementCost: 2500, managesStock: true, initialStock: 24, minimumStock: 8, currentStock: 5, stockStatus: "low", stockStatusRaw: "⚠️ Bajo stock", active: true, stockKnown: true },
-  { id: "demo-variant-2", name: "Lavandina concentrada 2L", productBaseId: "demo-product-2", productBaseName: "Lavandina", variant: "Concentrada", presentation: "2 litros", salePrice: 3900, promoPrice: 0, replacementCost: 2100, managesStock: true, initialStock: 18, minimumStock: 5, currentStock: 0, stockStatus: "empty", stockStatusRaw: "❌ Sin unidades", active: true, stockKnown: true },
-  { id: "demo-variant-3", name: "Esponja multiuso", productBaseId: "demo-product-1", productBaseName: "Detergente", variant: "Multiuso", presentation: "Unidad", salePrice: 1200, promoPrice: 0, replacementCost: 650, managesStock: false, initialStock: 0, minimumStock: 0, currentStock: 0, stockStatus: "not_managed", stockStatusRaw: "➖ Sin stock", active: true, stockKnown: false },
+  { id: "demo-variant-1", name: "Detergente clásico 1L", productBaseId: "demo-product-1", productBaseName: "Detergente", variant: "Clásico", presentation: "1 litro", salePrice: 4200, promoPrice: 3900, replacementCost: 2500, managesStock: true, initialStock: 24, minimumStock: 8, currentStock: 5, stockStatus: "low", stockStatusRaw: "⚠️ Bajo stock", active: true, stockKnown: true },
+  { id: "demo-variant-2", name: "Lavandina concentrada 2L", productBaseId: "demo-product-2", productBaseName: "Lavandina", variant: "Concentrada", presentation: "2 litros", salePrice: 3900, promoPrice: 3500, replacementCost: 2100, managesStock: true, initialStock: 18, minimumStock: 5, currentStock: 0, stockStatus: "empty", stockStatusRaw: "❌ Sin unidades", active: true, stockKnown: true },
+  { id: "demo-variant-3", name: "Esponja multiuso", productBaseId: "demo-product-1", productBaseName: "Detergente", variant: "Multiuso", presentation: "Unidad", salePrice: 1200, promoPrice: 1000, replacementCost: 650, managesStock: false, initialStock: 0, minimumStock: 0, currentStock: 0, stockStatus: "not_managed", stockStatusRaw: "➖ Sin stock", active: true, stockKnown: false },
+];
+
+export const demoPromos: Promo[] = [
+  { id: "demo-promo-fixed", name: "Pack limpieza", type: "Promo fija", manualPrice: 5000, calculatedPrice: 0, finalPrice: 0, displayPrice: 5000, priceSource: "manual", active: true, order: 1, notes: "Promo con precio manual y variante fija." },
+  { id: "demo-promo-custom", name: "Combo ahorro", type: "Promo personalizada", manualPrice: 0, calculatedPrice: 0, finalPrice: 0, displayPrice: 0, priceSource: "none", active: true, order: 2, notes: "Elegí la variante y confirmá el total." },
+  { id: "demo-promo-custom-free", name: "Promo libre", type: "Promo personalizada", manualPrice: 0, calculatedPrice: 0, finalPrice: 0, displayPrice: 0, priceSource: "none", active: true, order: 3, notes: "Promo personalizada sin reglas predefinidas." },
+];
+
+export const demoPromoRules: PromoRule[] = [
+  { id: "demo-rule-fixed", name: "Detergente clásico", promoId: "demo-promo-fixed", productBaseId: "demo-product-1", productBaseName: "Detergente", requiredQuantity: 1, allowVariantChoice: false, fixedVariantId: "demo-variant-1", fixedVariantName: "Detergente clásico 1L", active: true, order: 1 },
+  { id: "demo-rule-custom", name: "Elegí detergente", promoId: "demo-promo-custom", productBaseId: "demo-product-1", productBaseName: "Detergente", requiredQuantity: 2, allowVariantChoice: true, active: true, order: 1 },
 ];

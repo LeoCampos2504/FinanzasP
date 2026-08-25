@@ -94,3 +94,66 @@ export type ReplenishmentInput = {
   origin: "Fondo reposición" | "Ganancias" | "Inversión / capital" | "No aplica";
   description?: string;
 };
+
+export type Promo = {
+  id: string;
+  name: string;
+  type?: string;
+  manualPrice: number;
+  calculatedPrice: number;
+  finalPrice: number;
+  displayPrice: number;
+  priceSource: "final" | "manual" | "calculated" | "components" | "none";
+  active?: boolean;
+  order?: number;
+  notes?: string;
+};
+
+export type PromoRule = {
+  id: string;
+  name: string;
+  promoId?: string;
+  productBaseId?: string;
+  productBaseName?: string;
+  requiredQuantity: number;
+  allowVariantChoice: boolean;
+  fixedVariantId?: string;
+  fixedVariantName?: string;
+  active?: boolean;
+  order?: number;
+};
+
+export type ResolvedPromoItem = {
+  ruleId: string;
+  ruleName: string;
+  productBaseId?: string;
+  variantId: string;
+  variantName: string;
+  quantity: number;
+  unitPrice: number;
+  unitPriceMode: "Promo" | "Sin precio" | "Manual";
+  replacementCost: number;
+  stockStatus: StockStatus;
+  currentStock: number;
+  managesStock: boolean;
+  stockKnown?: boolean;
+  manualUnitPrice?: number;
+};
+
+export type ManualPromoComponentInput = {
+  variantId: string;
+  quantity: number;
+  unitPrice?: number | null;
+  priceMode: "Promo" | "Manual";
+};
+
+export type PromoSaleInput = {
+  promoId?: string;
+  accountId: string;
+  date: string;
+  description?: string;
+  mode: "fixed" | "custom";
+  selectedVariantsByRuleId: Record<string, string>;
+  manualComponents: ManualPromoComponentInput[];
+  manualTotal?: number | null;
+};

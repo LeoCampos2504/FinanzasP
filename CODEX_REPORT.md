@@ -1,8 +1,8 @@
-# CODEX REPORT - Finanzas El Tigre PWA - MVP 2 Stock
+# CODEX REPORT - Finanzas El Tigre PWA - MVP 3 Promos
 
 ## Resumen
 
-Se extendió la PWA mobile-first para controlar finanzas personales y de negocio con productos, variantes, stock, venta con producto y reposición. Se mantiene el MVP 1 y la integración con Notion usa REST API exclusivamente en backend, relaciones mediante IDs de página reales y detección dinámica del schema antes de crear páginas.
+Se extendió la PWA mobile-first para controlar finanzas personales y de negocio con productos, variantes, stock, venta con producto, reposición y promos. Se mantiene el MVP 1/MVP 2 y la integración con Notion usa REST API exclusivamente en backend, relaciones mediante IDs de página reales y detección dinámica del schema antes de crear páginas.
 
 ## Corrección de errores de schema Notion
 
@@ -32,7 +32,17 @@ La pantalla Configuración consulta y muestra las propiedades detectadas de Movi
 - Bloqueo de ventas con stock insuficiente o stock no verificable cuando la variante maneja stock.
 - Dashboard con los primeros productos bajo stock.
 - Configuración con schemas de Productos base, Variantes y Detalle de productos.
-- No se implementaron promos ni reglas de promo.
+
+## Alcance MVP 3: promos
+
+- Listado de promos activas con búsqueda y filtros por promo fija/personalizada.
+- Lectura de reglas de promo y variantes permitidas desde Notion.
+- Venta fija o personalizada con una regla por detalle de producto.
+- Creación de un Movimiento de ingreso y múltiples Detalles de productos.
+- Cada detalle usa `Afecta stock = true` y `Sentido stock = Salida`; el stock sigue siendo calculado por Notion.
+- Las variantes fijas se respetan y las reglas seleccionables exigen una variante válida del producto base.
+- Se bloquea stock insuficiente/no verificable cuando la variante maneja stock.
+- Demo local con promo fija, promo personalizada, reglas y variantes.
 
 ## Stack
 
@@ -57,6 +67,8 @@ La pantalla Configuración consulta y muestra las propiedades detectadas de Movi
 - `/productos`: productos base, variantes, búsqueda, filtros de stock y acciones Vender/Reponer.
 - `/cargar/venta-producto`: venta por variante, cantidad, precio individual/manual, cuenta y fecha.
 - `/cargar/reposicion`: reposición por variante, costo unitario, cuenta, origen y fecha.
+- `/promos`: listado de promos activas y acceso a vender.
+- `/cargar/venta-promo`: venta fija/personalizada, selección de variantes por regla, cuenta, fecha y total manual.
 
 ## API routes
 
@@ -76,6 +88,10 @@ La pantalla Configuración consulta y muestra las propiedades detectadas de Movi
 - `GET /api/variantes?search=&lowStock=true&productBaseId=`
 - `POST /api/movimientos/venta-producto`
 - `POST /api/movimientos/reposicion`
+- `GET /api/promos`
+- `GET /api/promos/[promoId]/reglas`
+- `GET /api/promos/reglas/[ruleId]/variantes`
+- `POST /api/movimientos/venta-promo`
 
 Todas las rutas privadas validan la cookie de sesión y responden con `{ ok, data }` o `{ ok: false, error }`.
 
@@ -95,7 +111,7 @@ Ver `.env.example`. Incluye `NOTION_TOKEN`, `NOTION_VERSION`, los IDs de data so
 
 Cuando faltan `NOTION_TOKEN` o `MOVIMIENTOS_DATA_SOURCE_ID`, la app usa datos demo locales y muestra el banner “Modo demo: faltan variables de Notion”. Las altas de movimientos y deudores se simulan con una respuesta exitosa informativa para permitir probar la UI sin configuración real.
 
-Para MVP 2 se agregaron productos base demo, variantes con stock OK/Bajo stock/Sin unidades y respuestas simuladas para venta con producto y reposición.
+Para MVP 2 se agregaron productos base demo, variantes con stock OK/Bajo stock/Sin unidades y respuestas simuladas para venta con producto y reposición. Para MVP 3 se agregaron promos demo, reglas con variante fija y regla seleccionable, y venta promo simulada.
 
 ## Notion: Movimiento + Detalle de productos
 
@@ -111,6 +127,14 @@ Corrección posterior contra el schema real: la relación de movimiento puede ll
 ```
 
 La app no recalcula ni escribe `Stock actual`: crea el Detalle con `Afecta stock = true` y `Sentido stock = Salida` o `Entrada`, dejando que las fórmulas/rollups de Notion actualicen el stock.
+
+## Detección de schema para promos
+
+`src/lib/notion/promo-mappers.ts`, `promo-service.ts` y `promo-transactions.ts` consultan Promos, Reglas de promo, Variantes, Movimientos y Detalle de productos antes de construir payloads. Para Reglas se aceptan relaciones `Promo`/`Promos`, productos `Producto base`/`Producto`/`Productos base`, cantidad `Cantidad requerida`/`Cantidad`/`Cantidad promo` y variantes fijas `Variante fija`, `Variante / Ítem`, `Variante / Item`, `Variante`, `Ítem vendible`, `Item vendible` o `Producto vendido`.
+
+En Detalle de productos se reutilizan los candidatos reales ya corregidos: movimiento [`Movimiento`, `Movimientos`, `Movimiento relacionado`, `Movimientos relacionados`] y variante [`Variante / Ítem`, `Variante / Item`, `Variante`, `Ítem vendible`, `Item vendible`, `Producto vendido`]. Nunca se envían ambas relaciones. Las relaciones Promo y Regla de promo son opcionales; si no existen, se omiten. Las propiedades críticas faltantes generan `NOTION_SCHEMA_MISSING_PROPERTY` antes de crear el Movimiento. Los select se eligen respetando las opciones detectadas cuando Notion las devuelve.
+
+La creación de una venta promo crea primero el Movimiento y luego un Detalle por cada regla. Si fallan uno o más detalles, la respuesta `PARTIAL_PROMO_CREATION` devuelve el ID del Movimiento, detalles creados y detalles fallidos para revisión manual; no se intenta borrar información en Notion.
 
 ## Validaciones MVP 2
 
@@ -140,13 +164,15 @@ Notion no tiene transacciones entre bases. Si el Movimiento se crea pero falla l
 - `npm install` — correcto; instaló dependencias. npm reportó 3 vulnerabilidades high del árbol instalado y advertencias de scripts pendientes de aprobación para dependencias nativas.
 - `npm run typecheck` — correcto, `tsc --noEmit` sin errores.
 - `npm run lint` — correcto, ESLint sin errores.
-- `npm run build` — correcto; generó 30 rutas App Router, incluyendo endpoints de productos, variantes, venta y reposición.
+- `npm run build` — correcto; generó 34 rutas App Router, incluyendo endpoints y pantallas de productos, variantes, venta, reposición y promos.
 - `npm run dev -- -p 3001` — correcto; servidor local levantado en `http://localhost:3001`.
 - Smoke test local — `/login`, `/productos`, `/cargar/venta-producto`, `/cargar/reposicion` y manifest respondieron HTTP 200; `/api/variantes` sin sesión respondió HTTP 401.
 
 El build deja un aviso informativo de Next indicando que su plugin ESLint no fue detectado por su integración interna; no impide el build y el comando `npm run lint` pasa correctamente.
 
-Validación de esta corrección de filtros: `npm run typecheck` ✅, `npm run lint` ✅ y `npm run build` ✅ con 30 rutas generadas. No se tocó `.env.local` ni se hicieron escrituras de prueba en Notion.
+Validación de esta corrección de filtros: `npm run typecheck` ✅, `npm run lint` ✅ y `npm run build` ✅. No se tocó `.env.local` ni se hicieron escrituras de prueba en Notion.
+
+Validación MVP 3: `npm run typecheck` ✅, `npm run lint` ✅ y `npm run build` ✅ con 34 rutas generadas. El build compiló las nuevas rutas de promos y venta promo. Smoke local sin sesión: `/promos`, `/cargar/venta-promo`, `/config` y `/productos` respondieron HTTP 200; las rutas privadas nuevas respondieron HTTP 401, como corresponde. No fue posible completar el smoke autenticado porque el PIN configurado en el entorno local no es `1234`; no se leyó ni modificó `.env.local`.
 
 ## Validación específica recomendada contra Notion real
 
@@ -169,6 +195,7 @@ Validación de esta corrección de filtros: `npm run typecheck` ✅, `npm run li
 - Cálculos y dominio: `src/lib/product-calculations.ts`, `src/lib/stock.ts`, `src/lib/auth.ts`, `src/lib/env.ts`, `src/lib/types.ts`, `src/lib/demo-data.ts`, `src/lib/format.ts`.
 - Componentes: `src/components/app-shell.tsx`, `movement-row.tsx`, `product-picker.tsx`, `stat-card.tsx`, `pwa-register.tsx`.
 - MVP 2 UI/API: `app/productos/page.tsx`, `app/cargar/venta-producto/page.tsx`, `app/cargar/reposicion/page.tsx`, `app/api/productos/route.ts`, `app/api/variantes/route.ts`, `app/api/movimientos/venta-producto/route.ts`, `app/api/movimientos/reposicion/route.ts`.
+- MVP 3 promos: `app/promos/page.tsx`, `app/cargar/venta-promo/page.tsx`, `app/api/promos/route.ts`, `app/api/promos/[promoId]/reglas/route.ts`, `app/api/promos/reglas/[ruleId]/variantes/route.ts`, `app/api/movimientos/venta-promo/route.ts`, `src/lib/notion/promo-mappers.ts`, `src/lib/notion/promo-service.ts`, `src/lib/notion/promo-transactions.ts`, `src/lib/promo-calculations.ts`.
 - PWA: `public/manifest.webmanifest`, `public/sw.js`, `public/icon.svg`.
 
 ## Cómo probar manualmente
@@ -202,6 +229,66 @@ Sin variables, usar PIN `1234` para probar el modo demo.
 13. Probar stock insuficiente y verificar el bloqueo.
 14. Simular un fallo de Detalle y verificar que se muestre el movement ID.
 
+## Pruebas manuales MVP 3
+
+1. En Configuración, verificar que Promos y Reglas de promo aparezcan como Consultado y revisar las propiedades obligatorias/opcionales detectadas.
+2. Abrir `/promos`, filtrar fija/personalizada y entrar en Vender promo.
+3. Probar una promo fija con variante fija; verificar un Movimiento de ingreso y un Detalle por regla.
+4. Probar una promo personalizada seleccionando variantes permitidas y, opcionalmente, un total manual.
+5. Revisar en Notion que el detalle usa la relación real `Movimiento` o `Movimientos`, nunca ambas, y la relación real de variante.
+6. Confirmar `Afecta stock = true`, `Sentido stock = Salida`, cantidad de cada regla y relación Promo/Regla si existen.
+7. Probar variante sin stock suficiente y stock no verificable; la venta debe bloquearse antes de crear páginas.
+8. Simular un fallo al crear un detalle y comprobar `PARTIAL_PROMO_CREATION`, el movement ID y el listado de detalles fallidos.
+
+## Corrección bug venta promo personalizada
+
+La pantalla `/cargar/venta-promo` renderizaba un formulario mínimo y no mantenía un estado completo por promo/regla. En particular, solo consultaba variantes para algunas reglas, no mostraba los componentes ni sus precios/stock, calculaba el total únicamente desde el precio de la promo y permitía que el estado de selección quedara incompleto.
+
+Se reemplazó el flujo de UI para que:
+
+- cargue promos activas y cuentas al abrir;
+- acepte `promoId` y `promo` por query param;
+- consulte siempre `GET /api/promos/[promoId]/reglas` al cambiar la promo;
+- consulte `GET /api/promos/reglas/[ruleId]/variantes` para cada regla;
+- muestre producto base, cantidad, variante fija o selector de variantes elegibles;
+- muestre stock, estado, precio promo unitario, costo de reposición y subtotal por componente;
+- calcule el total personalizado como suma de componentes;
+- use el precio final de la promo fija cuando existe, mostrando también el cálculo por componentes;
+- permita `Total manual` como override opcional en ambos modos;
+- bloquee Guardar si faltan promo, cuenta, fecha, reglas/variantes o stock verificable suficiente.
+
+También se amplió el mapper de variantes para aceptar relaciones de producto base `Producto base`, `Producto` y `Productos base`. El endpoint de reglas usa los candidatos `Promo`/`Promos` y el endpoint de variantes filtra por el producto base real, mantiene variantes activas y devuelve la variante fija cuando corresponde.
+
+Archivos corregidos en esta iteración: `app/cargar/venta-promo/page.tsx`, `src/lib/notion/promo-service.ts`, `src/lib/notion/product-mappers.ts` y `CODEX_REPORT.md`.
+
+Validación de esta iteración: `npm run typecheck` ✅, `npm run lint` ✅ y `npm run build` ✅ con 34 rutas. Smoke local sin sesión: `/promos` y `/cargar/venta-promo?promo=demo-promo-custom-free` respondieron HTTP 200; `/api/promos`, `/api/variantes` y `/api/cuentas` respondieron HTTP 401, protegiendo las rutas privadas. Las pruebas funcionales de componentes libres quedan recomendadas para ejecutar con sesión demo o contra Notion real; no se tocó `.env.local` ni se usaron datos sensibles en cliente.
+
+## Corrección conceptual de precios y promos libres
+
+La causa del precio vacío era que el mapper solo consideraba unas pocas propiedades y la UI mostraba `Precio calculado`, aunque una promo fija podía tener el valor en `Precio manual`. `mapPromo` ahora conserva `manualPrice`, `calculatedPrice`, `finalPrice`, `displayPrice` y `priceSource`. El fallback es: `Precio final usado`/equivalentes, luego `Precio manual`/equivalentes, luego `Precio calculado`/equivalentes y finalmente componentes; si no hay valor se muestra `Sin precio definido`. El backend usa `displayPrice` para una promo fija salvo que exista `manualTotal > 0`.
+
+Una promo personalizada ya no depende obligatoriamente de reglas activas. Puede tener reglas, que se resuelven como guía, o funcionar como promo libre/ad hoc. En el segundo caso la UI muestra `Agregar componente`, permite seleccionar variantes activas, cantidad, modo `Promo`/`Manual`, precio unitario manual, stock, subtotal y quitar componentes. El POST acepta `promoId` opcional y `manualComponents`; crea un Detalle por regla y otro por cada componente manual. En componentes libres se omite `Regla de promo` si la propiedad existe o no, y `Promo` solo se envía si hay promo seleccionada y la propiedad existe.
+
+La UI permite cambiar entre `Promo fija` y `Promo personalizada`, elegir una plantilla opcional en custom o `Promo personalizada libre`, calcular el total por componentes y usar `manualTotal` como override. Las validaciones bloquean cantidad inválida, precio manual inválido, falta de variante, stock insuficiente, falta de cuenta/fecha y ventas sin componentes.
+
+Demo incluye una promo fija con precio manual, una personalizada con reglas y `Promo libre` sin reglas. Las cuentas siguen viniendo de `GET /api/cuentas`; el endpoint filtra cuentas activas con `Activo` o `Activa` y no agrega billeteras predefinidas.
+
+Archivos adicionales modificados: `src/lib/types.ts`, `src/lib/demo-data.ts`, `src/lib/notion/promo-mappers.ts`, `src/lib/notion/promo-service.ts`, `src/lib/notion/promo-transactions.ts`, `src/lib/promo-calculations.ts`, `app/api/movimientos/venta-promo/route.ts`, `app/cargar/venta-promo/page.tsx`, `app/promos/page.tsx` y `app/api/cuentas/route.ts`.
+
+## Mejora UX: catálogo rápido de promo personalizada libre
+
+La UX anterior agregaba tarjetas grandes por componente. Ahora `/cargar/venta-promo` agrupa las variantes bajo productos base, permite buscar por producto/variante, expandir productos con varias variantes y usar filas compactas con botones `−`, cantidad y `+`. Los productos con una sola variante muestran el contador directamente; una variante con stock cero o stock no verificable no permite sumar y nunca se supera el stock disponible.
+
+El estado usa `selectedQuantitiesByVariantId` y solo genera `manualComponents` para cantidades mayores a cero. Cada componente se envía con `priceMode = Promo` y el precio promo unitario, con fallback a precio de venta individual. No se muestra selector `Promo/Manual` por componente. `Total manual` solo reemplaza el monto final del Movimiento; los Detalles continúan creándose por componente con cantidad, relación de variante, `Afecta stock = true` y `Sentido stock = Salida`.
+
+El resumen muestra componentes, cantidades, subtotales, total calculado y total final usado. El catálogo se arma con `GET /api/productos` + `GET /api/variantes`, sin agregar endpoints ni billeteras hardcodeadas. La demo contiene un producto con varias variantes, un producto con variante única, precios promo, stock bajo y una variante sin unidades.
+
+Archivos modificados en esta iteración: `app/cargar/venta-promo/page.tsx`, `app/globals.css` y `src/lib/demo-data.ts`. Se revisó `POST /api/movimientos/venta-promo`: `priceMode` ausente mantiene fallback `Promo`, no exige precio manual por componente Promo y procesa los Detalles aunque exista `manualTotal`.
+
+Pruebas manuales recomendadas: abrir venta promo, cambiar a promo personalizada libre, buscar producto, expandir variantes, sumar/restar sin superar stock, verificar variante única, revisar resumen y total calculado, guardar con y sin total manual y confirmar que el Movimiento usa el total manual mientras los Detalles y el descuento de stock se mantienen.
+
+Validación UX final: `npm run typecheck` ✅, `npm run lint` ✅ y `npm run build` ✅ con 34 rutas. Smoke sin sesión: `/cargar/venta-promo?promo=demo-promo-custom-free` y `/promos` respondieron HTTP 200; `/api/productos`, `/api/variantes` y `/api/cuentas` respondieron HTTP 401 correctamente.
+
 ## Corrección específica de schema
 
 La causa del error fue que la app exigía únicamente `Movimiento`, mientras que el data source real exponía `Movimientos`. Config ahora considera cubierta la relación si detecta cualquiera de los candidatos definidos y muestra la propiedad real detectada, sin marcar “Movimiento” como faltante. Venta y reposición comparten el mismo builder, por lo que ambos usan la corrección.
@@ -220,12 +307,9 @@ Se agregó `src/lib/stock.ts` con la función pura `normalizeStockStatus`, que d
 
 `GET /api/variantes` acepta `stockStatus=low` y `stockStatus=empty`; `lowStock=true` se mantiene como alias compatible de `stockStatus=low`. `/productos` usa esos filtros y también valida localmente el estado normalizado. El Dashboard incluye únicamente `low` y `empty`, nunca `not_managed`.
 
-## Pendientes MVP 3
+## Pendientes posteriores
 
-- Promo fija
-- Promo personalizada
-- Reglas de promo
-- Estadísticas avanzadas
-- Modo offline
+- Estadísticas avanzadas.
+- Modo offline.
 
 No se hizo commit ni push.
