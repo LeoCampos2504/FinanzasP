@@ -7,9 +7,11 @@ import { getCheckbox, getFormulaNumber, getNumber, getSelect, getTitle } from "@
 import { resolveBusinessId } from "@/lib/notion/domain";
 import { checkbox, relation, richText, title } from "@/lib/notion/properties";
 import { buildSchemaAwareProperties, formatNotionError, getDataSourceSchema } from "@/lib/notion/schema";
+import { canManageExpenses } from "@/lib/permissions";
 
 export async function GET() {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  if (!canManageExpenses(session)) return forbidden();
   if (isDemoMode() || !getEnv("DEUDORES_DATA_SOURCE_ID")) return NextResponse.json({ ok: true, data: demoDebtors });
   try {
     const result = await queryDataSource(getEnv("DEUDORES_DATA_SOURCE_ID"), { page_size: 100 });
@@ -19,7 +21,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  if (!canManageExpenses(session)) return forbidden();
   const body = await request.json().catch(() => ({}));
   const name = String(body.name || "").trim();
   if (!name) return NextResponse.json({ ok: false, error: { code: "VALIDATION", message: "El nombre es requerido." } }, { status: 400 });
@@ -38,3 +41,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, data: { id: page.id, name, balance: 0, status: "Sin deuda" }, meta: built.warnings.length ? { warnings: built.warnings } : undefined });
   } catch (error) { return NextResponse.json({ ok: false, error: { code: error instanceof Error && "code" in error ? String((error as Error & { code?: string }).code) : "NOTION_ERROR", message: formatNotionError(error, "No se pudo crear el deudor.", "Deudores") } }, { status: error instanceof Error && "code" in error && String((error as Error & { code?: string }).code) === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : 502 }); }
 }
+function forbidden() { return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "No tenés permiso para administrar deudores." } }, { status: 403 }); }

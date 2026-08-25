@@ -6,11 +6,13 @@ import { calculateProductTotal, validateStock } from "@/lib/product-calculations
 import { createProductSale, ProductOperationError } from "@/lib/notion/product-transactions";
 import { formatNotionError, SchemaValidationError } from "@/lib/notion/schema";
 import type { ProductSaleInput } from "@/lib/types";
+import { canSell } from "@/lib/permissions";
 
 export async function POST(request: Request) {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return unauthorized(); }
+  if (!canSell(session)) return forbidden("No tenés permiso para vender.");
   const body = await request.json().catch(() => ({}));
-  const input = normalizeInput(body);
+  const input = { ...normalizeInput(body), businessId: session.activeBusinessId };
   const validation = validateInput(input);
   if (validation) return NextResponse.json({ ok: false, error: { code: "VALIDATION", message: validation } }, { status: 400 });
   if (isDemoMode()) {
@@ -28,4 +30,6 @@ export async function POST(request: Request) {
 
 function normalizeInput(body: any): ProductSaleInput { return { variantId: String(body.variantId || ""), quantity: Number(body.quantity), accountId: String(body.accountId || ""), date: String(body.date || ""), description: body.description ? String(body.description) : undefined, unitPriceMode: body.unitPriceMode === "manual" ? "manual" : "individual", manualUnitPrice: body.manualUnitPrice === null || body.manualUnitPrice === undefined || body.manualUnitPrice === "" ? null : Number(body.manualUnitPrice) }; }
 function validateInput(input: ProductSaleInput) { if (!input.variantId) return "Elegí una variante."; if (!(input.quantity > 0)) return "La cantidad debe ser mayor a cero."; if (!Number.isInteger(input.quantity)) return "La cantidad debe ser un número entero."; if (!input.accountId) return "Elegí una cuenta."; if (!input.date) return "La fecha es requerida."; if (input.unitPriceMode === "manual" && !(Number(input.manualUnitPrice) > 0)) return "El precio unitario manual debe ser mayor a cero."; return ""; }
-function productErrorResponse(error: unknown) { const isProduct = error instanceof ProductOperationError; const isSchema = error instanceof SchemaValidationError; const code = isProduct ? error.code : isSchema ? error.code : "NOTION_ERROR"; const status = code === "VALIDATION" || code === "VARIANT_NOT_FOUND" || code === "ACCOUNT_NOT_FOUND" ? 400 : code === "STOCK_INSUFFICIENT" || code === "STOCK_UNKNOWN" || code === "ACCOUNT_INACTIVE" ? 409 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : 502; const message = isProduct || isSchema ? error.message : formatNotionError(error, "No se pudo guardar la venta con producto.", "Movimientos / Detalle de productos"); return NextResponse.json({ ok: false, error: { code, message, details: isProduct ? error.details : undefined } }, { status }); }
+function productErrorResponse(error: unknown) { const isProduct = error instanceof ProductOperationError; const isSchema = error instanceof SchemaValidationError; const code = isProduct ? error.code : isSchema ? error.code : "NOTION_ERROR"; const status = code === "BUSINESS_FORBIDDEN" ? 403 : code === "VALIDATION" || code === "VARIANT_NOT_FOUND" || code === "ACCOUNT_NOT_FOUND" ? 400 : code === "STOCK_INSUFFICIENT" || code === "STOCK_UNKNOWN" || code === "ACCOUNT_INACTIVE" ? 409 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : 502; const message = isProduct || isSchema ? error.message : formatNotionError(error, "No se pudo guardar la venta con producto.", "Movimientos / Detalle de productos"); return NextResponse.json({ ok: false, error: { code, message, details: isProduct ? error.details : undefined } }, { status }); }
+function unauthorized() { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+function forbidden(message: string) { return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message } }, { status: 403 }); }

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getEnv, isDemoMode } from "@/lib/env";
+import { isGlobalAdmin } from "@/lib/permissions";
 import { queryDataSource } from "@/lib/notion/client";
 
 export async function POST() {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  if (!isGlobalAdmin(session)) return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "Solo Admin global puede probar la conexión sensible." } }, { status: 403 });
   if (isDemoMode()) return NextResponse.json({ ok: true, data: { connected: false, demoMode: true, message: "Modo demo: completá las variables de Notion para probar la conexión real." } });
   try {
     await queryDataSource(getEnv("CUENTAS_DATA_SOURCE_ID") || getEnv("MOVIMIENTOS_DATA_SOURCE_ID"), { page_size: 1 });

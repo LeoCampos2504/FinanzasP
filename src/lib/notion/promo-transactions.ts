@@ -19,7 +19,7 @@ const movementCandidates = ["Movimiento", "Movimientos", "Movimiento relacionado
 const variantCandidates = ["Variante / Ítem", "Variante / Item", "Variante", "Ítem vendible", "Item vendible", "Producto vendido"] as const;
 
 export async function createPromoSale(input: PromoSaleInput) {
-  try { await assertActiveAccount(input.accountId); } catch (error) { if (error instanceof AccountOperationError) throw new PromoOperationError(error.code, error.message); throw error; }
+  try { await assertActiveAccount(input.accountId, input.businessId); } catch (error) { if (error instanceof AccountOperationError) throw new PromoOperationError(error.code, error.message); throw error; }
   const movementId = getEnv("MOVIMIENTOS_DATA_SOURCE_ID");
   const detailId = getEnv("DETALLE_PRODUCTOS_DATA_SOURCE_ID");
   if (!movementId) throw new PromoOperationError("CONFIG_MISSING", "Falta configurar MOVIMIENTOS_DATA_SOURCE_ID.");
@@ -34,7 +34,7 @@ export async function createPromoSale(input: PromoSaleInput) {
   if (!(total > 0)) throw new PromoOperationError("VALIDATION", "La promo no tiene precio definido. Ingresá un total manual mayor a cero.");
   if (input.mode === "fixed" && !context?.promo && !(input.manualTotal && input.manualTotal > 0)) throw new PromoOperationError("VALIDATION", "La promo fija requiere una promo seleccionada.");
 
-  const [movementSchema, detailSchema, businessId] = await Promise.all([getDataSourceSchema(movementId), getDataSourceSchema(detailId), resolveBusinessId()]);
+  const [movementSchema, detailSchema, businessId] = await Promise.all([getDataSourceSchema(movementId), getDataSourceSchema(detailId), resolveBusinessId(input.businessId)]);
   const requiredDetailProperties: Array<{ candidates: readonly string[]; label: string }> = [
     { candidates: ["Nombre"], label: "Nombre" }, { candidates: movementCandidates, label: "relación movimiento" }, { candidates: variantCandidates, label: "relación variante" },
     { candidates: ["Cantidad"], label: "Cantidad" }, { candidates: ["Modo de precio"], label: "Modo de precio" }, { candidates: ["Afecta stock"], label: "Afecta stock" }, { candidates: ["Sentido stock"], label: "Sentido stock" }, { candidates: ["Activo"], label: "Activo" },

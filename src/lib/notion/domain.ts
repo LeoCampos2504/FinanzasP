@@ -2,7 +2,8 @@ import { getEnv } from "@/lib/env";
 import { queryDataSource } from "@/lib/notion/client";
 import { getCheckbox, getRelationId, getTitle } from "@/lib/notion/normalize";
 
-export async function resolveBusinessId() {
+export async function resolveBusinessId(preferredId = "") {
+  if (preferredId) return preferredId;
   if (getEnv("DEFAULT_NEGOCIO_PAGE_ID")) return getEnv("DEFAULT_NEGOCIO_PAGE_ID");
   const dataSourceId = getEnv("NEGOCIOS_DATA_SOURCE_ID");
   if (!dataSourceId) return "";

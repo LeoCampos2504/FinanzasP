@@ -1,4 +1,4 @@
-# CODEX REPORT - Finanzas El Tigre PWA - MVP 4.5 Cuentas y billeteras
+# CODEX REPORT - Finanzas El Tigre PWA - MVP 5.1 Permisos por rol y negocio
 
 ## Resumen
 
@@ -507,11 +507,355 @@ Notion no ofrece una transacción entre data sources. Si el Producto base se cre
 10. Probar modo demo para producto único y múltiple.
 11. Probar una falla de schema o propiedad en Notion y confirmar `PARTIAL_PRODUCT_WITH_VARIANTS_CREATION`, variantes creadas/fallidas y recomendación de revisión.
 
+## MVP 5 Usuarios internos
+
+### Resumen
+
+Se implementó login por usuario interno con PIN individual, configuración del primer PIN, restauración por Admin, sesión firmada con identidad mínima y fallback compatible con `APP_PIN` legacy. El PIN nunca se guarda en texto plano ni se envía al cliente.
+
+### Alcance
+
+Incluido:
+
+- Base Notion opcional `Usuarios` con detección dinámica de schema.
+- Roles básicos `Admin` y `Usuario`.
+- Alta, edición, activación/desactivación y restauración de PIN.
+- Selector de usuario en `/login` cuando la base está disponible.
+- Usuario actual visible en el encabezado de la app.
+- Endpoint de sesión y permisos Admin para gestión.
+- Usuarios demo `Admin` y `Vendedor`.
+
+No incluido todavía: Caja/POS, auditoría completa, permisos finos por pantalla, modo offline, pago dividido, estadísticas avanzadas y vista PC completa.
+
+### Modelo de usuarios
+
+- Un usuario tiene nombre, rol y estado activo.
+- Si no tiene hash, el primer PIN válido ingresado se hashea y queda guardado como PIN definitivo.
+- Restaurar PIN borra el hash y marca PIN pendiente cuando la propiedad existe; no se genera PIN temporal.
+- Se evita desactivar o degradar al único Admin activo.
+- Los PIN aceptan entre 4 y 12 dígitos numéricos.
+- Sin `USUARIOS_DATA_SOURCE_ID`, el login mantiene `APP_PIN` y la sesión queda como `Admin · Legacy`.
+- Las cookies legacy con payload `authenticated` siguen siendo válidas y se interpretan como sesión Admin legacy.
+
+### Rutas nuevas
+
+- `/usuarios`: listado y acciones de administración.
+- `/usuarios/nuevo`: alta sin pedir PIN.
+- `/usuarios/[userId]/editar`: edición y restauración de PIN.
+- `/api/auth/session`: consulta de sesión actual sin exponer secretos.
+- `/api/usuarios`: listado para login y CRUD Admin.
+- `/api/usuarios/[userId]`: actualización parcial Admin.
+- `/api/usuarios/[userId]/reset-pin`: restauración Admin.
+
+### API de autenticación
+
+- `POST /api/auth/login` acepta `{ pin }` en modo legacy o `{ userId, pin }` con Usuarios.
+- Primer login de usuario sin PIN devuelve `firstPinSet: true`.
+- Login correcto crea cookie httpOnly HMAC con `userId`, `userName`, `role` y `authMode`.
+- `GET /api/usuarios` devuelve solo usuarios activos por defecto y `hasPin`/`requiresPinSetup`; nunca devuelve `pinHash`.
+- `GET /api/usuarios?includeInactive=true`, POST, PATCH y reset requieren Admin.
+
+### Notion
+
+Se agregó `USUARIOS_DATA_SOURCE_ID` únicamente a `.env.example`; no se modificó `.env.local`. Las propiedades mínimas detectadas son Nombre, Activo, Rol y PIN hash. Las opcionales son PIN pendiente, Orden, Notas y Último acceso. Los candidatos de nombre, rol, hash y demás campos están centralizados en `src/lib/notion/user-admin.ts` y se validan contra el schema real antes de escribir.
+
+Si Rol es `select` o `status`, se usan las opciones existentes y se devuelve un error claro si falta `Admin` o `Usuario`. Si Rol es `rich_text`, se escribe texto. El hash se escribe como texto en la propiedad real detectada.
+
+### Seguridad
+
+- Hash scrypt con salt aleatorio y comparación timing-safe en `src/lib/user-pin.ts`.
+- El hash solo circula en server-side; se elimina antes de responder usuarios y no aparece en UI.
+- La sesión usa cookie httpOnly, `sameSite=lax`, firma HMAC y expiración de 14 días.
+- Todas las rutas existentes siguen exigiendo sesión.
+- La gestión de usuarios exige rol Admin.
+- No se usa localStorage para PIN ni secretos.
+- `NOTION_TOKEN` continúa únicamente en server-side.
+
+### Demo mode
+
+El modo demo incluye Admin con PIN `1234` y Vendedor sin PIN. Vendedor puede configurar su primer PIN, luego validarlo, y Admin puede restaurarlo. Alta, edición y reset se mantienen en memoria y muestran “Guardado simulado en modo demo”. El login legacy con `1234` sigue disponible si se omite el usuario.
+
+### Validaciones
+
+- Nombre obligatorio.
+- Rol `Admin` o `Usuario`, con validación contra opciones del schema.
+- PIN solo numérico, mínimo 4 y máximo 12.
+- Usuario inactivo rechazado.
+- PIN incorrecto rechazado con mensaje claro.
+- No se permite dejar el sistema sin Admin activo cuando el caso puede detectarse.
+- Errores de configuración indican `USUARIOS_DATA_SOURCE_ID` y fallback PIN global.
+
+### Archivos modificados/creados
+
+- `.env.example`: agrega `USUARIOS_DATA_SOURCE_ID`.
+- `src/lib/env.ts`: registra la variable nueva.
+- `src/lib/auth.ts`: sesión firmada con identidad, roles, modo y compatibilidad legacy.
+- `src/lib/user-pin.ts`: validación, hash scrypt y verificación timing-safe.
+- `src/lib/notion/user-admin.ts`: candidatos, mappers, schema-aware, CRUD, PIN y último acceso.
+- `src/lib/demo-user-store.ts`: usuarios demo mutables en memoria.
+- `app/api/auth/login/route.ts`, `app/api/auth/session/route.ts`: login y sesión.
+- `app/api/usuarios/route.ts`, `app/api/usuarios/[userId]/route.ts`, `app/api/usuarios/[userId]/reset-pin/route.ts`: API protegida.
+- `app/login/page.tsx`: selector de usuario y primer PIN.
+- `src/components/app-shell.tsx`: sesión actual en encabezado.
+- `src/components/user-admin-forms.tsx`, `app/usuarios/*`: administración visual.
+- `app/api/config/status/route.ts`, `app/config/page.tsx`: schema Usuarios, autenticación y acceso a administración.
+- `CODEX_REPORT.md`: documentación MVP 5.
+
+### Comandos ejecutados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 43 rutas App Router. Se mantuvo el warning informativo de que el plugin de Next no está detectado en la configuración ESLint.
+- `git diff --check` — correcto; Git solo informó advertencias de conversión LF/CRLF.
+- Smoke demo aislado en puertos 3002/3003, sin modificar archivos: listado sin hash, login Admin, gestión Admin, alta, primer PIN de Vendedor, sesión con usuario/rol, PIN incorrecto, reset y nuevo PIN — correcto.
+- Smoke con el `.env.local` existente: `/api/usuarios` informó modo legacy porque no está configurado `USUARIOS_DATA_SOURCE_ID`; no se expusieron valores ni se modificó el archivo.
+
+### Pruebas manuales recomendadas
+
+1. Sin `USUARIOS_DATA_SOURCE_ID`, confirmar login legacy con `APP_PIN`.
+2. Configurar Usuarios en el entorno y abrir `/login`.
+3. Confirmar selector de usuarios activos y que no aparece ningún hash.
+4. Crear usuario desde `/usuarios` sin pedir PIN.
+5. Cerrar sesión y seleccionar el usuario nuevo.
+6. Ingresar PIN por primera vez y confirmar el mensaje de configuración.
+7. Cerrar sesión, probar PIN incorrecto y luego PIN correcto.
+8. Desde Admin, restaurar PIN y confirmar que el próximo login permite definir uno nuevo.
+9. Desactivar usuario y confirmar que no puede entrar.
+10. Confirmar que un Usuario recibe acceso denegado al administrar usuarios.
+11. Confirmar en Notion que el hash se guarda en la propiedad candidata real y que Último acceso solo se actualiza si existe como fecha.
+12. Revisar Config para Usuarios: consultado, propiedades detectadas y faltantes obligatorias/opcionales.
+13. Probar demo: Admin `1234`, Vendedor primer PIN y reset simulado.
+14. Repetir `npm run typecheck`, `npm run lint` y `npm run build`.
+
 ### Pendientes próximos
 
-- Cuentas/billeteras avanzadas creadas por usuario.
-- Usuarios internos.
+- Caja/POS con usuario vendedor, apertura y cierre.
+- Registro opcional de Usuario en Movimientos cuando exista la propiedad real.
+- Permisos finos por pantalla y auditoría.
 - Vista PC responsive.
+- Estadísticas avanzadas y modo offline.
+
+## MVP 5.1 Permisos por rol y negocio
+
+### Resumen
+
+Se reemplazó el uso directo de `Admin/Usuario` por permisos centralizados con roles `Admin global`, `Admin negocio` y `Vendedor negocio`. La sesión ahora incluye roles normalizados, negocios asignados y `activeBusinessId`. La UI oculta accesos no permitidos y el backend vuelve a validar cada operación.
+
+### Roles
+
+- **Admin global**: acceso a todos los negocios, usuarios, productos, variantes, stock, cuentas, gastos, ventas, reposición, reset de PIN y configuración sensible.
+- **Admin negocio**: administra usuarios, productos, variantes, stock, cuentas, gastos, ventas, reposición y movimientos únicamente dentro de su negocio activo. No puede crear ni editar Admin global.
+- **Vendedor negocio**: puede vender productos/promos, consultar productos necesarios y recibir stock mediante reposición simple. No puede administrar usuarios, cuentas, productos, precios, costos maestros, gastos ni configuración.
+
+Los roles legacy se normalizan temporalmente: `Admin` → `Admin global` y `Usuario` → `Vendedor negocio`. Config advierte cuando detecta esos valores.
+
+### Permisos
+
+| Capacidad | Admin global | Admin negocio | Vendedor negocio |
+|---|---:|---:|---:|
+| Dashboard / ventas | Sí | Sí | Sí |
+| Ver movimientos | Sí | Sí, propio negocio | No listado general |
+| Usuarios | Todos | Solo negocio asignado | No |
+| Productos y variantes admin | Todos | Solo negocio asignado | No; lectura sí |
+| Cuentas/billeteras | Todos | Solo negocio asignado | No |
+| Gastos/egresos/deudores | Sí | Sí, propio negocio | No |
+| Reposición simple | Sí | Sí | Sí |
+| Configuración sensible | Sí | No | No |
+| Cambiar negocio activo | Sí | No | No |
+
+### Negocio asignado
+
+`src/lib/notion/user-admin.ts` detecta relaciones candidatas `Negocio`, `Negocios`, `Negocios asignados`, `Empresa` y `Empresas`, y devuelve `businessIds` sin incluir ningún PIN hash. La sesión usa el primer negocio asignado como activo; si no existe relación se usa `DEFAULT_NEGOCIO_PAGE_ID` y Config muestra: “Usuarios no tiene relación a Negocios. Se usa negocio por defecto.”
+
+Se agregaron `GET /api/negocios` y `POST /api/session/active-business`. Admin global puede cambiar a cualquier negocio disponible; Admin negocio y Vendedor solo pueden usar negocios asignados.
+
+### UI
+
+- Navegación inferior y acciones de Cargar se filtran por rol.
+- Vendedor no ve Usuarios, Cuentas, Config, Deudores, egresos ni la pestaña Admin de Productos.
+- Rutas administrativas muestran tarjeta “Acceso denegado” con botón de regreso.
+- Formularios de usuario usan los tres roles finales y selector de negocios.
+- Admin negocio queda limitado a su negocio activo; Admin global puede asignar múltiples negocios.
+- AppShell muestra rol y permite cambiar negocio cuando corresponde.
+- Config muestra rol actual, advertencias de relación de negocio y roles legacy.
+
+### Backend
+
+Se protegieron por rol los endpoints de Usuarios, reset de PIN, Productos, Variantes, creación unificada, Cuentas, Egresos, Deudores, Config, ventas, promos y reposición. Además, las actualizaciones reales de productos, variantes y cuentas verifican el negocio relacionado antes de modificar la página. El negocio activo se pasa a los builders de movimientos y detalles para preparar el filtrado multi-negocio.
+
+### Notion
+
+La relación de Usuarios agrega candidatos `Negocio`, `Negocios`, `Negocios asignados`, `Empresa` y `Empresas`. El campo Rol conserva compatibilidad con propiedades `select`, `status` o `rich_text`; si el schema solo tiene opciones legacy, se escriben temporalmente `Admin`/`Usuario` cuando existe correspondencia segura. No se inventan propiedades y nunca se devuelve `PIN hash`.
+
+### Seguridad
+
+- El frontend solo oculta accesos; cada endpoint vuelve a validar sesión, rol y negocio.
+- Vendedor recibe 403 al intentar Usuarios, Cuentas, creación de productos, egresos o cambio de negocio.
+- Admin negocio recibe 400/403 al intentar crear Admin global o tocar otro negocio.
+- `NOTION_TOKEN` continúa server-side y `.env.local` no fue modificado.
+
+### Demo mode
+
+Se agregaron dos negocios demo: `El Tigre` y `Kiosco Familiar`, y tres usuarios:
+
+- Admin global Demo, PIN `1234`, acceso a ambos negocios.
+- Admin negocio Demo, negocio El Tigre, configura PIN en primer ingreso.
+- Vendedor negocio Demo, negocio El Tigre, configura PIN en primer ingreso.
+
+### Validaciones
+
+- Normalización de roles nuevos y legacy.
+- Acceso a negocio activo y rechazo de negocio no asignado.
+- Admin negocio no puede crear/editar Admin global.
+- Vendedor no puede administrar usuarios, cuentas, productos, variantes, gastos o configuración.
+- Reposición sigue disponible para Vendedor sin habilitar edición de productos ni costos maestros.
+- Usuarios sin relación de negocio usan fallback y reciben advertencia de Config.
+
+### Archivos modificados/creados
+
+- `src/lib/permissions.ts`: roles, permisos y acceso a negocio.
+- `src/lib/auth.ts`: sesión normalizada con `businessIds` y `activeBusinessId`.
+- `src/lib/notion/user-admin.ts`: relación Usuario → Negocios, roles finales y schema-aware.
+- `src/lib/notion/business-service.ts`, `src/lib/notion/business-access.ts`: negocios disponibles y control de ownership.
+- `src/lib/demo-data.ts`, `src/lib/demo-user-store.ts`: negocios y roles demo.
+- `app/api/negocios/route.ts`, `app/api/session/active-business/route.ts`: negocio activo.
+- `app/api/usuarios/*`: permisos por rol, alcance por negocio y restricciones de Admin global.
+- Endpoints de productos, variantes, cuentas, movimientos, deudores y configuración: autorización backend.
+- `src/components/app-shell.tsx`, `src/components/permission-gate.tsx`, `src/components/access-denied.tsx`: navegación, selector y protección visual.
+- `app/cargar/page.tsx`, `app/productos/page.tsx`, `app/config/page.tsx`, `app/usuarios/*`, `app/cuentas/*`: UX por rol.
+- `CODEX_REPORT.md`: documentación MVP 5.1.
+
+### Comandos ejecutados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 45 rutas App Router. Se mantuvo el warning informativo del plugin de Next no detectado en ESLint.
+- Smoke demo aislado en puerto 3004 — correcto: roles visibles sin hash, Admin global puede cambiar negocio, Admin negocio no crea Admin global, Vendedor recibe 403 en Usuarios/Cuentas/Productos admin/Egresos/cambio de negocio y 200 en lectura de Productos.
+- No se modificó `.env.local`; el smoke usó variables vacías solo para el proceso demo.
+
+### Pruebas manuales recomendadas
+
+1. Admin global ve Usuarios, Cuentas, Productos Admin y Config.
+2. Admin global cambia entre El Tigre y Kiosco Familiar.
+3. Admin negocio ve usuarios únicamente de su negocio.
+4. Admin negocio no puede crear Admin global ni cambiar a otro negocio.
+5. Vendedor negocio no ve Usuarios, Cuentas, Productos Admin, Deudores ni Config.
+6. Vendedor negocio puede vender producto y promo.
+7. Vendedor negocio puede acceder a reposición simple.
+8. Vendedor negocio no puede editar producto, precio ni costo maestro.
+9. Probar acceso directo por URL a `/usuarios`, `/cuentas` y formularios admin como Vendedor.
+10. Confirmar 403 backend para endpoints administrativos.
+11. Revisar Config: rol, negocio activo, relación detectada, roles legacy y fallback.
+12. Probar roles legacy `Admin`/`Usuario` y confirmar el mapeo temporal.
+13. Probar los tres roles demo y el cambio de negocio.
+14. Repetir typecheck, lint y build.
+
+### Pendientes próximos
+
+- MVP 5.2: reposiciones pendientes, confirmación Admin y snapshot de costos.
 - Caja/POS local.
-- Estadísticas avanzadas.
-- Modo offline.
+- Filtrado multi-negocio completo en todas las consultas y métricas.
+- Vista PC responsive, estadísticas avanzadas y modo offline.
+
+## Corrección MVP 5.1: login agrupado, usuarios por negocio y cuentas operativas
+
+### Bugs encontrados
+
+- Admin negocio podía recibir usuarios sin asignación de negocio y, en consecuencia, ver Admin global en `/usuarios`.
+- El formulario de usuario ofrecía Admin global sin considerar la sesión actual.
+- Vendedor negocio recibía 403 al consultar `/api/cuentas`, aunque necesitaba cuentas activas para ventas, promos y reposición.
+- `/login` mezclaba usuarios de todos los negocios en un único selector.
+
+### Causa
+
+La autorización estaba concentrada en permisos generales de administración y no en operaciones de lectura. Además, la visibilidad de usuarios trataba como visibles los registros sin relaciones de negocio y el frontend no tenía un ámbito de login explícito. Las cuentas tampoco exponían sus relaciones de negocio al mapper ni se validaban contra el negocio activo antes de usarlas en una operación.
+
+### Solución
+
+- Se centralizaron `canSeeManagedUser`, `canCreateUserWithRole`, `canEditUser`, `canResetUserPin`, `canAssignBusinesses` y `getAllowedAssignableRoles` en `src/lib/permissions.ts`.
+- Admin negocio solo ve usuarios no globales con intersección entre sus negocios asignados y los del usuario. Los registros sin asignación no se incluyen en ese listado.
+- Los roles disponibles en el formulario se calculan según sesión: Admin global ve los tres; Admin negocio solo ve Admin negocio y Vendedor negocio.
+- `GET /api/cuentas` distingue administración de lectura operativa: con `includeInactive=true` exige Admin global/Admin negocio; sin ese parámetro permite al Vendedor consultar solo cuentas activas y aplica el filtro de negocio cuando existe la relación.
+- Ventas de producto, promos, reposición, ingresos y egresos vuelven a validar que la cuenta esté activa y pertenezca al negocio seleccionado.
+- `/login` usa `GET /api/auth/login-options` y agrupa primero por Admin global o Negocio, luego por negocio y finalmente por usuario.
+
+### Backend
+
+- `app/api/auth/login-options/route.ts`: opciones públicas mínimas para login, sin PIN hash, token, cookie ni secretos.
+- `app/api/auth/login/route.ts`: valida `loginScope`, `businessId`, rol, pertenencia, usuario activo y primer PIN; fija `activeBusinessId` validado.
+- `app/api/usuarios/route.ts`, `app/api/usuarios/[userId]/route.ts` y `reset-pin/route.ts`: filtros y validación server-side para ver, crear, editar, desactivar y resetear usuarios.
+- `app/api/cuentas/route.ts` y `app/api/cuentas/[accountId]/route.ts`: lectura operativa, filtrado por negocio y bloqueo de escritura para Vendedor.
+- `src/lib/notion/account-admin.ts` y `src/lib/notion/account-service.ts`: detección de relación `Negocio`/`Negocios` y validación de cuenta activa/pertenencia.
+- Endpoints de movimientos y `src/lib/notion/product-transactions.ts`/`promo-transactions.ts`: propagación del negocio activo y rechazo `BUSINESS_FORBIDDEN` para cuentas de otro negocio.
+- `app/api/config/status/route.ts` y `app/config/page.tsx`: advertencias para relaciones faltantes en Usuarios y Cuentas.
+
+### UI
+
+- `app/login/page.tsx`: flujo en dos niveles Admin global / Negocio, selección automática cuando hay una sola opción y mensaje de primer PIN.
+- `app/cargar/venta-producto/page.tsx`, `app/cargar/venta-promo/page.tsx` y `app/cargar/reposicion/page.tsx`: usan `GET /api/cuentas` sin `includeInactive`, muestran cuentas activas y explican qué hacer si no hay cuentas.
+- `src/components/user-admin-forms.tsx`: roles y negocio asignable adaptados a la sesión.
+
+### Seguridad
+
+- El frontend oculta opciones, pero el backend vuelve a validar cada rol, negocio, cuenta, scope y operación.
+- El endpoint público de login devuelve solo `id`, nombre, rol, `hasPin` y `requiresPinSetup`; no devuelve PIN hash ni datos de entorno.
+- `NOTION_TOKEN` continúa exclusivamente en servidor.
+- `.env.local` no se tocó y no se crearon secretos.
+
+### Demo
+
+- Se mantienen Admin global Demo con PIN `1234`, Admin negocio Demo y Vendedor negocio Demo con primer PIN.
+- Se mantienen los negocios demo El Tigre y Kiosco Familiar.
+- Las cuentas demo activas están asignadas a El Tigre para probar ventas y reposición con el Vendedor.
+
+### Comandos ejecutados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 46 rutas App Router. Se mantuvo el warning informativo del plugin de Next no detectado en ESLint.
+- Smoke contra el `.env.local` existente: `GET /api/auth/login-options` respondió modo `users`, no incluyó `pinHash`, `NOTION_TOKEN` ni hashes, y rechazó con 403 los scopes incompatibles global/negocio.
+- Smoke demo aislado en puerto 3006, con variables vacías solo en el proceso: Admin global mostró solo Admin global; El Tigre mostró Admin negocio/Vendedor negocio; Vendedor obtuvo 2 cuentas activas, 403 en cuentas inactivas y 403 en Usuarios; Admin negocio obtuvo 403 al intentar crear Admin global.
+
+### Pruebas manuales recomendadas
+
+1. En demo, abrir `/login` y comprobar primero Admin global / Negocio.
+2. Elegir Admin global y confirmar que solo aparece Admin global Demo.
+3. Elegir Negocio → El Tigre y confirmar Admin negocio Demo/Vendedor negocio Demo, sin Admin global.
+4. Probar primer PIN de Admin negocio y Vendedor negocio.
+5. Como Admin global, comprobar los tres roles en `/usuarios` y crear uno de cada tipo.
+6. Como Admin negocio, comprobar que no aparece Admin global y que usuarios fuera del negocio no son visibles.
+7. Intentar POST/PATCH/reset de Admin global como Admin negocio y confirmar 403.
+8. Como Vendedor, comprobar 403 en `/cuentas?includeInactive=true` y 200 con `/api/cuentas` solo activas.
+9. Como Vendedor, comprobar cuentas activas en venta producto, venta promo y reposición; sin cuentas debe mostrarse el mensaje operativo.
+10. Intentar usar una cuenta inactiva o de otro negocio en ventas/reposición y confirmar rechazo server-side.
+11. Abrir Config y revisar relación Usuarios → Negocios, relación Cuentas → Negocios y advertencias de fallback.
+12. Repetir typecheck, lint y build después de probar contra Notion real.
+
+### Pendientes
+
+- MVP 5.2: reposiciones pendientes, confirmación Admin y snapshot de costos.
+- Caja/POS.
+- Completar filtrado multi-negocio en métricas y consultas que aún dependan de fallback.
+- Vista PC responsive.
+
+## Corrección final MVP 5.1: listado Usuarios siempre autenticado
+
+### Causa
+
+`GET /api/usuarios` solo pedía sesión cuando se enviaba `includeInactive=true`. La pantalla `/usuarios` usa `includeInactive=false` inicialmente, por lo que recibía todos los usuarios sin ejecutar el filtro de alcance; así podía aparecer un Admin global relacionado al mismo negocio.
+
+### Corrección
+
+- El endpoint ahora exige sesión y permiso de Usuarios en todas las variantes del listado.
+- Se agregó `filterManagedUsers` para centralizar el filtrado.
+- Admin global ve todos los usuarios.
+- Admin negocio solo ve usuarios cuyo rol normalizado no sea `Admin global` y cuya relación de negocio intersecte sus negocios asignados/activo.
+- Vendedor negocio recibe 403.
+- Se mantiene la misma protección en PATCH y reset de PIN, incluyendo acceso directo por URL.
+
+### Verificación
+
+- Se verificó el filtro tanto para demo como para Notion real.
+- No se exponen PIN hash ni secretos.
+- `.env.local` no fue modificado.
+- No se hizo commit ni push.

@@ -1,8 +1,13 @@
-import type { Account, Category, Debtor, Movement, ProductBase, Promo, PromoRule, SellableVariant } from "@/lib/types";
+import type { Account, Business, Category, Debtor, Movement, ProductBase, Promo, PromoRule, SellableVariant } from "@/lib/types";
+
+export const demoBusinesses: Business[] = [
+  { id: "demo-business-tigre", name: "El Tigre", active: true },
+  { id: "demo-business-kiosco", name: "Kiosco Familiar", active: true },
+];
 
 export const demoAccounts: Account[] = [
-  { id: "demo-cash", name: "Efectivo", type: "Caja", initialBalance: 150000, expectedBalance: 186500, balance: 186500, active: true, isMainCash: true, order: 1, notes: "Cuenta demo." },
-  { id: "demo-mp", name: "Mercado Pago", type: "Billetera virtual", initialBalance: 300000, expectedBalance: 324800, balance: 324800, active: true, isMainCash: false, order: 2, notes: "Cuenta demo." },
+  { id: "demo-cash", name: "Efectivo", type: "Caja", businessIds: ["demo-business-tigre"], initialBalance: 150000, expectedBalance: 186500, balance: 186500, active: true, isMainCash: true, order: 1, notes: "Cuenta demo." },
+  { id: "demo-mp", name: "Mercado Pago", type: "Billetera virtual", businessIds: ["demo-business-tigre"], initialBalance: 300000, expectedBalance: 324800, balance: 324800, active: true, isMainCash: false, order: 2, notes: "Cuenta demo." },
 ];
 export const demoMovements: Movement[] = [
   { id: "demo-1", name: "Venta mostrador", date: new Date().toISOString().slice(0, 10), type: "Ingreso", subtype: "Venta simple", amount: 28500, account: "Efectivo", scope: "Negocio" },

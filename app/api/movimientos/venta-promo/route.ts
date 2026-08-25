@@ -7,11 +7,13 @@ import { formatNotionError, SchemaValidationError } from "@/lib/notion/schema";
 import { calculatePromoTotal, resolvePromoUnitPrice } from "@/lib/promo-calculations";
 import { validateStock } from "@/lib/product-calculations";
 import type { ManualPromoComponentInput, PromoSaleInput, ResolvedPromoItem } from "@/lib/types";
+import { canSell } from "@/lib/permissions";
 
 export async function POST(request: Request) {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return unauthorized(); }
+  if (!canSell(session)) return forbidden();
   const body = await request.json().catch(() => ({}));
-  const input = normalizeInput(body);
+  const input = { ...normalizeInput(body), businessId: session.activeBusinessId };
   const validation = validateInput(input);
   if (validation) return NextResponse.json({ ok: false, error: { code: "VALIDATION", message: validation } }, { status: 400 });
   if (isDemoMode()) {
@@ -58,7 +60,9 @@ function promoErrorResponse(error: unknown) {
   const operation = error instanceof PromoOperationError ? error : null;
   const schema = error instanceof SchemaValidationError ? error : null;
   const code = operation ? operation.code : schema ? schema.code : "NOTION_ERROR";
-  const status = code === "VALIDATION" || code === "CUSTOM_COMPONENTS_REQUIRED" || code === "FIXED_COMPONENTS_REQUIRED" || code === "PROMO_NOT_FOUND" || code === "RULE_VARIANT_REQUIRED" || code === "VARIANT_NOT_FOUND" || code === "VARIANT_NOT_ALLOWED" || code === "ACCOUNT_NOT_FOUND" ? 400 : code === "STOCK_INSUFFICIENT" || code === "STOCK_UNKNOWN" || code === "ACCOUNT_INACTIVE" ? 409 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : code === "PARTIAL_PROMO_CREATION" ? 502 : 502;
+  const status = code === "BUSINESS_FORBIDDEN" ? 403 : code === "VALIDATION" || code === "CUSTOM_COMPONENTS_REQUIRED" || code === "FIXED_COMPONENTS_REQUIRED" || code === "PROMO_NOT_FOUND" || code === "RULE_VARIANT_REQUIRED" || code === "VARIANT_NOT_FOUND" || code === "VARIANT_NOT_ALLOWED" || code === "ACCOUNT_NOT_FOUND" ? 400 : code === "STOCK_INSUFFICIENT" || code === "STOCK_UNKNOWN" || code === "ACCOUNT_INACTIVE" ? 409 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : code === "PARTIAL_PROMO_CREATION" ? 502 : 502;
   const message = operation ? operation.message : schema ? schema.message : formatNotionError(error, "No se pudo guardar la venta de la promo.", "Movimientos / Detalle de productos");
   return NextResponse.json({ ok: false, error: { code, message, details: operation ? operation.details : undefined } }, { status });
 }
+function unauthorized() { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+function forbidden() { return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "No tenés permiso para vender promos." } }, { status: 403 }); }

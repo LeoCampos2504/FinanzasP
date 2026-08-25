@@ -6,90 +6,868 @@ import { AppShell } from "@/components/app-shell";
 import { ars } from "@/lib/format";
 import { promoModeFromType } from "@/lib/promo-calculations";
 import { stockStatusLabel } from "@/lib/stock";
-import type { Account, ProductBase, Promo, PromoRule, SellableVariant } from "@/lib/types";
+import type {
+  Account,
+  ProductBase,
+  Promo,
+  PromoRule,
+  SellableVariant,
+} from "@/lib/types";
 
 const today = () => new Date().toISOString().slice(0, 10);
-type RuleState = { loading: boolean; variants: SellableVariant[]; error?: string };
+type RuleState = {
+  loading: boolean;
+  variants: SellableVariant[];
+  error?: string;
+};
 type CatalogProduct = { id: string; name: string; variants: SellableVariant[] };
 
-function variantPrice(variant?: SellableVariant) { return variant ? (variant.promoPrice > 0 ? variant.promoPrice : variant.salePrice) : 0; }
-function stockTone(variants: SellableVariant[]) { if (variants.some((variant) => variant.stockStatus === "empty")) return "stock-none"; if (variants.some((variant) => variant.stockStatus === "low")) return "stock-low"; return "stock-ok"; }
-function productStockLabel(variants: SellableVariant[]) { if (!variants.length) return "Sin variantes"; if (variants.some((variant) => variant.stockStatus === "empty")) return "Sin unidades"; if (variants.some((variant) => variant.stockStatus === "low")) return "Bajo stock"; return "OK"; }
+function variantPrice(variant?: SellableVariant) {
+  return variant
+    ? variant.promoPrice > 0
+      ? variant.promoPrice
+      : variant.salePrice
+    : 0;
+}
+function stockTone(variants: SellableVariant[]) {
+  if (variants.some((variant) => variant.stockStatus === "empty"))
+    return "stock-none";
+  if (variants.some((variant) => variant.stockStatus === "low"))
+    return "stock-low";
+  return "stock-ok";
+}
+function productStockLabel(variants: SellableVariant[]) {
+  if (!variants.length) return "Sin variantes";
+  if (variants.some((variant) => variant.stockStatus === "empty"))
+    return "Sin unidades";
+  if (variants.some((variant) => variant.stockStatus === "low"))
+    return "Bajo stock";
+  return "OK";
+}
 
-function QuantityCounter({ value, canIncrease, onDecrease, onIncrease }: { value: number; canIncrease: boolean; onDecrease: () => void; onIncrease: () => void }) {
-  return <div className="quantity-counter"><button type="button" aria-label="Restar unidad" onClick={onDecrease} disabled={value <= 0}>−</button><strong>{value}</strong><button type="button" aria-label="Sumar unidad" onClick={onIncrease} disabled={!canIncrease}>+</button></div>;
+function QuantityCounter({
+  value,
+  canIncrease,
+  onDecrease,
+  onIncrease,
+}: {
+  value: number;
+  canIncrease: boolean;
+  onDecrease: () => void;
+  onIncrease: () => void;
+}) {
+  return (
+    <div className="quantity-counter">
+      <button
+        type="button"
+        aria-label="Restar unidad"
+        onClick={onDecrease}
+        disabled={value <= 0}
+      >
+        −
+      </button>
+      <strong>{value}</strong>
+      <button
+        type="button"
+        aria-label="Sumar unidad"
+        onClick={onIncrease}
+        disabled={!canIncrease}
+      >
+        +
+      </button>
+    </div>
+  );
 }
 
 export default function PromoSalePage() {
   const router = useRouter();
-  const [promos, setPromos] = useState<Promo[]>([]); const [accounts, setAccounts] = useState<Account[]>([]); const [products, setProducts] = useState<ProductBase[]>([]); const [allVariants, setAllVariants] = useState<SellableVariant[]>([]);
-  const [rules, setRules] = useState<PromoRule[]>([]); const [ruleStates, setRuleStates] = useState<Record<string, RuleState>>({}); const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({}); const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({}); const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({}); const [catalogSearch, setCatalogSearch] = useState("");
-  const [promoId, setPromoId] = useState(""); const [mode, setMode] = useState<"fixed" | "custom">("fixed"); const [form, setForm] = useState({ accountId: "", date: today(), description: "", manualTotal: "" });
-  const [initialLoading, setInitialLoading] = useState(true); const [rulesLoading, setRulesLoading] = useState(false); const [saving, setSaving] = useState(false); const [demo, setDemo] = useState(false); const [error, setError] = useState(""); const [message, setMessage] = useState("");
+  const [promos, setPromos] = useState<Promo[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [products, setProducts] = useState<ProductBase[]>([]);
+  const [allVariants, setAllVariants] = useState<SellableVariant[]>([]);
+  const [rules, setRules] = useState<PromoRule[]>([]);
+  const [ruleStates, setRuleStates] = useState<Record<string, RuleState>>({});
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, string>
+  >({});
+  const [selectedQuantities, setSelectedQuantities] = useState<
+    Record<string, number>
+  >({});
+  const [expandedProducts, setExpandedProducts] = useState<
+    Record<string, boolean>
+  >({});
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [promoId, setPromoId] = useState("");
+  const [mode, setMode] = useState<"fixed" | "custom">("fixed");
+  const [form, setForm] = useState({
+    accountId: "",
+    date: today(),
+    description: "",
+    manualTotal: "",
+  });
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [demo, setDemo] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const promo = promos.find((item) => item.id === promoId);
 
   useEffect(() => {
-    let cancelled = false; const params = new URLSearchParams(window.location.search); const initialPromoId = params.get("promoId") || params.get("promo") || "";
-    Promise.all([fetch("/api/promos"), fetch("/api/cuentas"), fetch("/api/productos"), fetch("/api/variantes")]).then(async ([promosResponse, accountsResponse, productsResponse, variantsResponse]) => {
-      const promosBody = await promosResponse.json(); const accountsBody = await accountsResponse.json(); const productsBody = await productsResponse.json(); const variantsBody = await variantsResponse.json(); if (cancelled) return;
-      if (!promosBody.ok) setError("No se pudieron cargar las promos."); else { const loadedPromos = Array.isArray(promosBody.data) ? promosBody.data as Promo[] : []; setPromos(loadedPromos); setDemo(Boolean(promosBody.meta?.demo)); const chosen = loadedPromos.find((item) => item.id === initialPromoId) || loadedPromos[0]; if (chosen) { setPromoId(chosen.id); setMode(promoModeFromType(chosen.type)); } }
-      if (!accountsBody.ok) setError((current) => current || "No se pudieron cargar las cuentas."); else { setAccounts(Array.isArray(accountsBody.data) ? accountsBody.data : []); setForm((current) => ({ ...current, accountId: current.accountId || accountsBody.data?.[0]?.id || "" })); }
-      if (productsBody.ok) setProducts(Array.isArray(productsBody.data) ? productsBody.data : []);
-      if (variantsBody.ok) setAllVariants(Array.isArray(variantsBody.data) ? variantsBody.data : []); else setError((current) => current || "No se pudieron cargar las variantes del catálogo.");
-    }).catch(() => { if (!cancelled) setError("No se pudieron cargar promos, cuentas y catálogo."); }).finally(() => { if (!cancelled) setInitialLoading(false); });
-    return () => { cancelled = true; };
+    let cancelled = false;
+    const params = new URLSearchParams(window.location.search);
+    const initialPromoId = params.get("promoId") || params.get("promo") || "";
+    Promise.all([
+      fetch("/api/promos"),
+      fetch("/api/cuentas"),
+      fetch("/api/productos"),
+      fetch("/api/variantes"),
+    ])
+      .then(
+        async ([
+          promosResponse,
+          accountsResponse,
+          productsResponse,
+          variantsResponse,
+        ]) => {
+          const promosBody = await promosResponse.json();
+          const accountsBody = await accountsResponse.json();
+          const productsBody = await productsResponse.json();
+          const variantsBody = await variantsResponse.json();
+          if (cancelled) return;
+          if (!promosBody.ok) setError("No se pudieron cargar las promos.");
+          else {
+            const loadedPromos = Array.isArray(promosBody.data)
+              ? (promosBody.data as Promo[])
+              : [];
+            setPromos(loadedPromos);
+            setDemo(Boolean(promosBody.meta?.demo));
+            const chosen =
+              loadedPromos.find((item) => item.id === initialPromoId) ||
+              loadedPromos[0];
+            if (chosen) {
+              setPromoId(chosen.id);
+              setMode(promoModeFromType(chosen.type));
+            }
+          }
+          if (!accountsBody.ok)
+            setError(
+              (current) => current || "No se pudieron cargar las cuentas.",
+            );
+          else {
+            setAccounts(
+              Array.isArray(accountsBody.data) ? accountsBody.data : [],
+            );
+            setForm((current) => ({
+              ...current,
+              accountId: current.accountId || accountsBody.data?.[0]?.id || "",
+            }));
+          }
+          if (productsBody.ok)
+            setProducts(
+              Array.isArray(productsBody.data) ? productsBody.data : [],
+            );
+          if (variantsBody.ok)
+            setAllVariants(
+              Array.isArray(variantsBody.data) ? variantsBody.data : [],
+            );
+          else
+            setError(
+              (current) =>
+                current || "No se pudieron cargar las variantes del catálogo.",
+            );
+        },
+      )
+      .catch(() => {
+        if (!cancelled)
+          setError("No se pudieron cargar promos, cuentas y catálogo.");
+      })
+      .finally(() => {
+        if (!cancelled) setInitialLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (!promoId) { setRules([]); setRuleStates({}); setSelectedVariants({}); setRulesLoading(false); return; }
-    let cancelled = false; setRulesLoading(true); setRules([]); setRuleStates({}); setSelectedVariants({}); setError("");
-    fetch(`/api/promos/${encodeURIComponent(promoId)}/reglas`).then(async (response) => { const body = await response.json(); if (cancelled) return; if (!body.ok) { setError(body.error?.message || "No se pudieron cargar las reglas de la promo."); return; } const loadedRules = Array.isArray(body.data) ? body.data as PromoRule[] : []; setRules(loadedRules); loadedRules.forEach((rule) => loadRuleVariants(rule, () => cancelled)); }).catch(() => { if (!cancelled) setError("No se pudieron cargar las reglas de la promo."); }).finally(() => { if (!cancelled) setRulesLoading(false); });
-    return () => { cancelled = true; };
+    if (!promoId) {
+      setRules([]);
+      setRuleStates({});
+      setSelectedVariants({});
+      setRulesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRulesLoading(true);
+    setRules([]);
+    setRuleStates({});
+    setSelectedVariants({});
+    setError("");
+    fetch(`/api/promos/${encodeURIComponent(promoId)}/reglas`)
+      .then(async (response) => {
+        const body = await response.json();
+        if (cancelled) return;
+        if (!body.ok) {
+          setError(
+            body.error?.message ||
+              "No se pudieron cargar las reglas de la promo.",
+          );
+          return;
+        }
+        const loadedRules = Array.isArray(body.data)
+          ? (body.data as PromoRule[])
+          : [];
+        setRules(loadedRules);
+        loadedRules.forEach((rule) => loadRuleVariants(rule, () => cancelled));
+      })
+      .catch(() => {
+        if (!cancelled)
+          setError("No se pudieron cargar las reglas de la promo.");
+      })
+      .finally(() => {
+        if (!cancelled) setRulesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [promoId]);
 
   async function loadRuleVariants(rule: PromoRule, isCancelled: () => boolean) {
-    setRuleStates((current) => ({ ...current, [rule.id]: { loading: true, variants: [] } }));
-    try { const body = await fetch(`/api/promos/reglas/${encodeURIComponent(rule.id)}/variantes`).then((response) => response.json()); if (isCancelled()) return; if (!body.ok) { setRuleStates((current) => ({ ...current, [rule.id]: { loading: false, variants: [], error: body.error?.message || "No se pudieron cargar las variantes elegibles." } })); return; } const loadedVariants = Array.isArray(body.data) ? body.data as SellableVariant[] : []; const errorMessage = loadedVariants.length ? undefined : rule.fixedVariantId ? "La variante fija configurada no está disponible." : `No hay variantes elegibles para ${rule.productBaseName || "este producto base"}.`; setRuleStates((current) => ({ ...current, [rule.id]: { loading: false, variants: loadedVariants, error: errorMessage } })); if (loadedVariants[0]) setSelectedVariants((current) => ({ ...current, [rule.id]: current[rule.id] || loadedVariants[0].id })); }
-    catch { if (!isCancelled()) setRuleStates((current) => ({ ...current, [rule.id]: { loading: false, variants: [], error: "No se pudieron cargar las variantes elegibles." } })); }
+    setRuleStates((current) => ({
+      ...current,
+      [rule.id]: { loading: true, variants: [] },
+    }));
+    try {
+      const body = await fetch(
+        `/api/promos/reglas/${encodeURIComponent(rule.id)}/variantes`,
+      ).then((response) => response.json());
+      if (isCancelled()) return;
+      if (!body.ok) {
+        setRuleStates((current) => ({
+          ...current,
+          [rule.id]: {
+            loading: false,
+            variants: [],
+            error:
+              body.error?.message ||
+              "No se pudieron cargar las variantes elegibles.",
+          },
+        }));
+        return;
+      }
+      const loadedVariants = Array.isArray(body.data)
+        ? (body.data as SellableVariant[])
+        : [];
+      const errorMessage = loadedVariants.length
+        ? undefined
+        : rule.fixedVariantId
+          ? "La variante fija configurada no está disponible."
+          : `No hay variantes elegibles para ${rule.productBaseName || "este producto base"}.`;
+      setRuleStates((current) => ({
+        ...current,
+        [rule.id]: {
+          loading: false,
+          variants: loadedVariants,
+          error: errorMessage,
+        },
+      }));
+      if (loadedVariants[0])
+        setSelectedVariants((current) => ({
+          ...current,
+          [rule.id]: current[rule.id] || loadedVariants[0].id,
+        }));
+    } catch {
+      if (!isCancelled())
+        setRuleStates((current) => ({
+          ...current,
+          [rule.id]: {
+            loading: false,
+            variants: [],
+            error: "No se pudieron cargar las variantes elegibles.",
+          },
+        }));
+    }
   }
 
-  function selectPromo(nextId: string) { const nextPromo = promos.find((item) => item.id === nextId); setPromoId(nextId); setSelectedQuantities({}); setExpandedProducts({}); if (nextPromo) setMode(promoModeFromType(nextPromo.type)); }
-  function variantForRule(rule: PromoRule) { const state = ruleStates[rule.id]; return state?.variants.find((variant) => variant.id === (selectedVariants[rule.id] || rule.fixedVariantId)); }
-  function changeQuantity(variant: SellableVariant, delta: number) { setSelectedQuantities((current) => { const previous = current[variant.id] || 0; const next = Math.max(0, previous + delta); const capped = variant.managesStock && variant.stockKnown === true ? Math.min(next, Math.max(0, variant.currentStock)) : next; return { ...current, [variant.id]: capped }; }); }
+  function selectPromo(nextId: string) {
+    const nextPromo = promos.find((item) => item.id === nextId);
+    setPromoId(nextId);
+    setSelectedQuantities({});
+    setExpandedProducts({});
+    if (nextPromo) setMode(promoModeFromType(nextPromo.type));
+  }
+  function variantForRule(rule: PromoRule) {
+    const state = ruleStates[rule.id];
+    return state?.variants.find(
+      (variant) =>
+        variant.id === (selectedVariants[rule.id] || rule.fixedVariantId),
+    );
+  }
+  function changeQuantity(variant: SellableVariant, delta: number) {
+    setSelectedQuantities((current) => {
+      const previous = current[variant.id] || 0;
+      const next = Math.max(0, previous + delta);
+      const capped =
+        variant.managesStock && variant.stockKnown === true
+          ? Math.min(next, Math.max(0, variant.currentStock))
+          : next;
+      return { ...current, [variant.id]: capped };
+    });
+  }
 
   const catalogProducts = useMemo<CatalogProduct[]>(() => {
     const byId = new Map<string, CatalogProduct>();
-    products.forEach((product) => byId.set(product.id, { id: product.id, name: product.name, variants: [] }));
-    allVariants.forEach((variant) => { const id = variant.productBaseId || `variant-${variant.id}`; const current = byId.get(id) || { id, name: variant.productBaseName || variant.name, variants: [] }; current.variants.push(variant); byId.set(id, current); });
-    const query = catalogSearch.trim().toLowerCase(); return [...byId.values()].filter((product) => !query || `${product.name} ${product.variants.map((variant) => `${variant.name} ${variant.presentation || ""}`).join(" ")}`.toLowerCase().includes(query));
+    products.forEach((product) =>
+      byId.set(product.id, {
+        id: product.id,
+        name: product.name,
+        variants: [],
+      }),
+    );
+    allVariants.forEach((variant) => {
+      const id = variant.productBaseId || `variant-${variant.id}`;
+      const current = byId.get(id) || {
+        id,
+        name: variant.productBaseName || variant.name,
+        variants: [],
+      };
+      current.variants.push(variant);
+      byId.set(id, current);
+    });
+    const query = catalogSearch.trim().toLowerCase();
+    return [...byId.values()].filter(
+      (product) =>
+        !query ||
+        `${product.name} ${product.variants.map((variant) => `${variant.name} ${variant.presentation || ""}`).join(" ")}`
+          .toLowerCase()
+          .includes(query),
+    );
   }, [allVariants, catalogSearch, products]);
-  const ruleRows = useMemo(() => rules.map((rule) => { const variant = variantForRule(rule); return { rule, variant, subtotal: variantPrice(variant) * rule.requiredQuantity }; }), [rules, ruleStates, selectedVariants]);
-  const selectedManualRows = useMemo(() => allVariants.filter((variant) => (selectedQuantities[variant.id] || 0) > 0).map((variant) => { const quantity = selectedQuantities[variant.id] || 0; return { variant, quantity, unitPrice: variantPrice(variant), subtotal: variantPrice(variant) * quantity }; }), [allVariants, selectedQuantities]);
-  const componentsTotal = ruleRows.reduce((sum, row) => sum + row.subtotal, 0) + selectedManualRows.reduce((sum, row) => sum + row.subtotal, 0);
-  const calculatedTotal = mode === "fixed" && promo?.displayPrice && promo.displayPrice > 0 ? promo.displayPrice : Math.round(componentsTotal * 100) / 100; const finalTotal = Number(form.manualTotal) > 0 ? Number(form.manualTotal) : calculatedTotal;
+  const ruleRows = useMemo(
+    () =>
+      rules.map((rule) => {
+        const variant = variantForRule(rule);
+        return {
+          rule,
+          variant,
+          subtotal: variantPrice(variant) * rule.requiredQuantity,
+        };
+      }),
+    [rules, ruleStates, selectedVariants],
+  );
+  const selectedManualRows = useMemo(
+    () =>
+      allVariants
+        .filter((variant) => (selectedQuantities[variant.id] || 0) > 0)
+        .map((variant) => {
+          const quantity = selectedQuantities[variant.id] || 0;
+          return {
+            variant,
+            quantity,
+            unitPrice: variantPrice(variant),
+            subtotal: variantPrice(variant) * quantity,
+          };
+        }),
+    [allVariants, selectedQuantities],
+  );
+  const componentsTotal =
+    ruleRows.reduce((sum, row) => sum + row.subtotal, 0) +
+    selectedManualRows.reduce((sum, row) => sum + row.subtotal, 0);
+  const calculatedTotal =
+    mode === "fixed" && promo?.displayPrice && promo.displayPrice > 0
+      ? promo.displayPrice
+      : Math.round(componentsTotal * 100) / 100;
+  const finalTotal =
+    Number(form.manualTotal) > 0 ? Number(form.manualTotal) : calculatedTotal;
 
   const validationMessage = useMemo(() => {
-    if (mode === "fixed" && !promoId) return "Elegí una promo para una venta fija."; if (!form.accountId) return "Elegí una cuenta."; if (!form.date) return "La fecha es requerida."; if (rulesLoading) return "Esperando las reglas de la promo…";
-    for (const row of ruleRows) { if (row.rule.fixedVariantId && !row.variant) return `La variante fija de "${row.rule.name}" no está disponible.`; if (row.rule.allowVariantChoice && !row.variant) return `Falta elegir variante para ${row.rule.name}.`; if (!row.rule.allowVariantChoice && !row.rule.fixedVariantId) return `La regla "${row.rule.name}" no tiene variante fija ni permite elegir variante.`; if (row.variant?.managesStock && row.variant.stockKnown !== true) return `No se pudo verificar el stock de ${row.variant.name}.`; if (row.variant?.managesStock && row.variant.currentStock < row.rule.requiredQuantity) return `Stock insuficiente para ${row.variant.name}.`; }
-    for (const row of selectedManualRows) { if (!Number.isInteger(row.quantity) || row.quantity <= 0) return `La cantidad de ${row.variant.name} debe ser un entero mayor a cero.`; if (!(row.unitPrice > 0)) return `El precio de ${row.variant.name} debe ser mayor a cero.`; if (row.variant.managesStock && row.variant.stockKnown !== true) return `No se pudo verificar el stock de ${row.variant.name}.`; if (row.variant.managesStock && row.variant.currentStock < row.quantity) return `Stock insuficiente para ${row.variant.name}.`; }
-    if (mode === "custom" && !ruleRows.length && !selectedManualRows.length) return "Agregá al menos un componente manual."; if (mode === "fixed" && !ruleRows.length) return "La promo fija necesita reglas configuradas."; if (!(finalTotal > 0)) return "La promo no tiene precio definido. Ingresá un total manual mayor a cero."; return "";
-  }, [finalTotal, form.accountId, form.date, mode, promoId, ruleRows, rulesLoading, selectedManualRows]);
+    if (mode === "fixed" && !promoId)
+      return "Elegí una promo para una venta fija.";
+    if (!form.accountId) return "Elegí una cuenta.";
+    if (!form.date) return "La fecha es requerida.";
+    if (rulesLoading) return "Esperando las reglas de la promo…";
+    for (const row of ruleRows) {
+      if (row.rule.fixedVariantId && !row.variant)
+        return `La variante fija de "${row.rule.name}" no está disponible.`;
+      if (row.rule.allowVariantChoice && !row.variant)
+        return `Falta elegir variante para ${row.rule.name}.`;
+      if (!row.rule.allowVariantChoice && !row.rule.fixedVariantId)
+        return `La regla "${row.rule.name}" no tiene variante fija ni permite elegir variante.`;
+      if (row.variant?.managesStock && row.variant.stockKnown !== true)
+        return `No se pudo verificar el stock de ${row.variant.name}.`;
+      if (
+        row.variant?.managesStock &&
+        row.variant.currentStock < row.rule.requiredQuantity
+      )
+        return `Stock insuficiente para ${row.variant.name}.`;
+    }
+    for (const row of selectedManualRows) {
+      if (!Number.isInteger(row.quantity) || row.quantity <= 0)
+        return `La cantidad de ${row.variant.name} debe ser un entero mayor a cero.`;
+      if (!(row.unitPrice > 0))
+        return `El precio de ${row.variant.name} debe ser mayor a cero.`;
+      if (row.variant.managesStock && row.variant.stockKnown !== true)
+        return `No se pudo verificar el stock de ${row.variant.name}.`;
+      if (row.variant.managesStock && row.variant.currentStock < row.quantity)
+        return `Stock insuficiente para ${row.variant.name}.`;
+    }
+    if (mode === "custom" && !ruleRows.length && !selectedManualRows.length)
+      return "Agregá al menos un componente manual.";
+    if (mode === "fixed" && !ruleRows.length)
+      return "La promo fija necesita reglas configuradas.";
+    if (!(finalTotal > 0))
+      return "La promo no tiene precio definido. Ingresá un total manual mayor a cero.";
+    return "";
+  }, [
+    finalTotal,
+    form.accountId,
+    form.date,
+    mode,
+    promoId,
+    ruleRows,
+    rulesLoading,
+    selectedManualRows,
+  ]);
 
-  async function submit(event: FormEvent) { event.preventDefault(); if (validationMessage) { setError(validationMessage); return; } setSaving(true); setError(""); setMessage(""); try { const response = await fetch("/api/movimientos/venta-promo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ promoId: promoId || undefined, accountId: form.accountId, date: form.date, description: form.description, mode, selectedVariantsByRuleId: selectedVariants, manualComponents: selectedManualRows.map((row) => ({ variantId: row.variant.id, quantity: row.quantity, unitPrice: row.unitPrice, priceMode: "Promo" })), manualTotal: form.manualTotal ? Number(form.manualTotal) : null }) }); const body = await response.json(); if (!body.ok) { const partial = body.error?.details?.movementId ? ` Movimiento creado: ${body.error.details.movementId}.` : ""; setError((body.error?.message || "No se pudo guardar la venta de promo.") + partial); return; } setMessage(body.meta?.message || "Venta de promo guardada correctamente."); setTimeout(() => router.push("/movimientos"), 900); } catch { setError("No se pudo guardar la venta de promo."); } finally { setSaving(false); } }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/movimientos/venta-promo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          promoId: promoId || undefined,
+          accountId: form.accountId,
+          date: form.date,
+          description: form.description,
+          mode,
+          selectedVariantsByRuleId: selectedVariants,
+          manualComponents: selectedManualRows.map((row) => ({
+            variantId: row.variant.id,
+            quantity: row.quantity,
+            unitPrice: row.unitPrice,
+            priceMode: "Promo",
+          })),
+          manualTotal: form.manualTotal ? Number(form.manualTotal) : null,
+        }),
+      });
+      const body = await response.json();
+      if (!body.ok) {
+        const partial = body.error?.details?.movementId
+          ? ` Movimiento creado: ${body.error.details.movementId}.`
+          : "";
+        setError(
+          (body.error?.message || "No se pudo guardar la venta de promo.") +
+            partial,
+        );
+        return;
+      }
+      setMessage(
+        body.meta?.message || "Venta de promo guardada correctamente.",
+      );
+      setTimeout(() => router.push("/movimientos"), 900);
+    } catch {
+      setError("No se pudo guardar la venta de promo.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  if (initialLoading) return <AppShell title="Venta promo" demo={demo} showFab={false}><div className="skeleton" style={{ marginTop: 14 }} /></AppShell>;
-  const customWithoutRules = mode === "custom" && !rulesLoading && !rules.length;
-  return <AppShell title="Venta promo" demo={demo} showFab={false}><form className="card form-card" onSubmit={submit}>
-    <div className="form-field"><label htmlFor="promo-mode">Modo de venta</label><select id="promo-mode" value={mode} onChange={(event) => setMode(event.target.value as "fixed" | "custom")}><option value="fixed">Promo fija</option><option value="custom">Promo personalizada</option></select></div>
-    <div className="form-field"><label htmlFor="promo-select">Promo {mode === "custom" && <span className="muted">(opcional para promo libre)</span>}</label><select id="promo-select" required={mode === "fixed"} value={promoId} onChange={(event) => selectPromo(event.target.value)}><option value="">{mode === "custom" ? "Sin plantilla · promo libre" : "Seleccionar promo"}</option>{promos.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.type || "Promo"}{item.displayPrice > 0 ? ` · ${ars(item.displayPrice)}` : ""}</option>)}</select></div>
-    {promo && <div className="selected-product"><strong>{promo.name}</strong><span>{promo.type || "Promo"} · {promo.displayPrice > 0 ? `Precio ${promo.priceSource}: ${ars(promo.displayPrice)}` : "Sin precio definido"}</span><span>Calculado por componentes: {componentsTotal > 0 ? ars(componentsTotal) : "a definir"}</span></div>}
-    <div className="section-title" style={{ marginTop: 10 }}><h2>Reglas y componentes</h2><span className="small muted">{rulesLoading ? "Cargando…" : `${rules.length} regla${rules.length === 1 ? "" : "s"}`}</span></div>
-    {rulesLoading && <div className="skeleton" />}{!rulesLoading && !rules.length && mode === "fixed" && <div className="alert error">Esta promo fija no tiene reglas activas. Debe configurarse antes de vender.</div>}{customWithoutRules && <div className="alert info">Esta promo no tiene reglas predefinidas. Agregá componentes desde el catálogo.</div>}
-    {!rulesLoading && rules.map((rule) => { const state = ruleStates[rule.id] || { loading: true, variants: [] }; const selectedVariant = variantForRule(rule); return <div className="card dashboard-card" style={{ marginBottom: 12 }} key={rule.id}><div className="inline-row"><strong>{rule.name}</strong><span className="badge">x{rule.requiredQuantity}</span></div><p className="small muted" style={{ margin: "6px 0 12px" }}>Producto base: {rule.productBaseName || "No informado"}</p>{state.loading && <div className="small muted">Cargando variantes elegibles…</div>}{!state.loading && rule.allowVariantChoice && <div className="form-field" style={{ marginBottom: 8 }}><label htmlFor={`rule-${rule.id}`}>Elegí una variante</label><select id={`rule-${rule.id}`} required value={selectedVariants[rule.id] || ""} onChange={(event) => setSelectedVariants((current) => ({ ...current, [rule.id]: event.target.value }))}><option value="">Seleccionar variante</option>{state.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.name} · {stockStatusLabel(variant.stockStatus)} · {ars(variantPrice(variant))}</option>)}</select></div>}{!state.loading && !rule.allowVariantChoice && rule.fixedVariantId && <div className="selected-product"><strong>Variante fija: {rule.fixedVariantName || selectedVariant?.name || "Configurada"}</strong></div>}{state.error && <div className="alert error">{state.error}</div>}{selectedVariant && <div className="stock-grid"><div><span>Stock actual</span><strong>{selectedVariant.currentStock}</strong></div><div><span>Estado</span><strong>{stockStatusLabel(selectedVariant.stockStatus)}</strong></div><div><span>Precio unitario</span><strong>{ars(variantPrice(selectedVariant))}</strong></div><div><span>Subtotal</span><strong>{ars(variantPrice(selectedVariant) * rule.requiredQuantity)}</strong></div></div>}</div>; })}
-    {customWithoutRules && <section className="catalog-section"><div className="form-field"><label htmlFor="catalog-search">Buscar producto o variante</label><input id="catalog-search" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="Ej. detergente, 1 litro…" /></div><div className="catalog-list">{catalogProducts.map((product) => { const selectedTotal = product.variants.reduce((sum, variant) => sum + (selectedQuantities[variant.id] || 0), 0); const expanded = Boolean(expandedProducts[product.id]); const single = product.variants.length === 1; return <div className="catalog-product" key={product.id}><div className="catalog-product-row"><div className="catalog-product-main"><strong>{product.name}</strong><span>{selectedTotal ? `${selectedTotal} seleccionado${selectedTotal === 1 ? "" : "s"}` : `${product.variants.length} variante${product.variants.length === 1 ? "" : "s"}`}</span></div><span className={`stock-chip ${stockTone(product.variants)}`}>{productStockLabel(product.variants)}</span>{product.variants.length > 1 && <button type="button" className="catalog-expand" onClick={() => setExpandedProducts((current) => ({ ...current, [product.id]: !expanded }))}>{expanded ? "▲" : "▼"}</button>}</div>{product.variants.length === 0 && <div className="catalog-empty">No hay variantes activas.</div>}{(single || expanded) && product.variants.map((variant) => { const quantity = selectedQuantities[variant.id] || 0; const canIncrease = !variant.managesStock ? true : variant.stockKnown === true && variant.currentStock > quantity; return <div className="catalog-variant-row" key={variant.id}><div className="catalog-variant-main"><strong>{variant.name}</strong><span>{[variant.presentation, `stock ${variant.currentStock}`, stockStatusLabel(variant.stockStatus), ars(variantPrice(variant))].filter(Boolean).join(" · ")}</span></div><QuantityCounter value={quantity} canIncrease={canIncrease} onDecrease={() => changeQuantity(variant, -1)} onIncrease={() => changeQuantity(variant, 1)} /></div>; })}</div>; })}</div></section>}
-    {customWithoutRules && <section className="catalog-summary"><div className="section-title" style={{ margin: "14px 0 8px" }}><h2>Resumen</h2><span className="small muted">{selectedManualRows.length} componente{selectedManualRows.length === 1 ? "" : "s"}</span></div>{selectedManualRows.length ? selectedManualRows.map((row) => <div className="catalog-summary-row" key={row.variant.id}><span>{row.variant.name} × {row.quantity}</span><strong>{ars(row.subtotal)}</strong></div>) : <p className="small muted">Elegí cantidades desde el catálogo.</p>}<div className="catalog-total-row"><span>Total calculado</span><strong>{ars(componentsTotal)}</strong></div></section>}
-    <div className="form-field"><label htmlFor="promo-total">Total manual <span className="muted">(opcional, reemplaza el monto del Movimiento)</span></label><input id="promo-total" min="1" step="1" type="number" value={form.manualTotal} onChange={(event) => setForm({ ...form, manualTotal: event.target.value })} /></div><div className="total-preview"><span>Total calculado / final usado</span><strong>{form.manualTotal && Number(form.manualTotal) > 0 ? `${ars(componentsTotal)} → ${ars(finalTotal)}` : ars(finalTotal)}</strong></div>
-    <div className="form-field"><label htmlFor="promo-account">Cuenta</label><select id="promo-account" required value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}><option value="">Seleccionar cuenta</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></div><div className="form-field"><label htmlFor="promo-date">Fecha</label><input id="promo-date" required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></div><div className="form-field"><label htmlFor="promo-description">Descripción <span className="muted">(opcional)</span></label><textarea id="promo-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
-    {error && <div className="alert error">{error}</div>}{message && <div className="alert success">{message}</div>}<button className="primary-btn" disabled={saving || Boolean(validationMessage)}>{saving ? "Guardando…" : "Guardar venta de promo"}</button>{validationMessage && !error && <p className="small muted" style={{ marginBottom: 0 }}>Para guardar: {validationMessage}</p>}
-  </form></AppShell>;
+  if (initialLoading)
+    return (
+      <AppShell title="Venta promo" demo={demo} showFab={false}>
+        <div className="skeleton" style={{ marginTop: 14 }} />
+      </AppShell>
+    );
+  const customWithoutRules =
+    mode === "custom" && !rulesLoading && !rules.length;
+  return (
+    <AppShell title="Venta promo" demo={demo} showFab={false}>
+      <form className="card form-card" onSubmit={submit}>
+        <div className="form-field">
+          <label htmlFor="promo-mode">Modo de venta</label>
+          <select
+            id="promo-mode"
+            value={mode}
+            onChange={(event) =>
+              setMode(event.target.value as "fixed" | "custom")
+            }
+          >
+            <option value="fixed">Promo fija</option>
+            <option value="custom">Promo personalizada</option>
+          </select>
+        </div>
+        <div className="form-field">
+          <label htmlFor="promo-select">
+            Promo{" "}
+            {mode === "custom" && (
+              <span className="muted">(opcional para promo libre)</span>
+            )}
+          </label>
+          <select
+            id="promo-select"
+            required={mode === "fixed"}
+            value={promoId}
+            onChange={(event) => selectPromo(event.target.value)}
+          >
+            <option value="">
+              {mode === "custom"
+                ? "Sin plantilla · promo libre"
+                : "Seleccionar promo"}
+            </option>
+            {promos.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} · {item.type || "Promo"}
+                {item.displayPrice > 0 ? ` · ${ars(item.displayPrice)}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        {promo && (
+          <div className="selected-product">
+            <strong>{promo.name}</strong>
+            <span>
+              {promo.type || "Promo"} ·{" "}
+              {promo.displayPrice > 0
+                ? `Precio ${promo.priceSource}: ${ars(promo.displayPrice)}`
+                : "Sin precio definido"}
+            </span>
+            <span>
+              Calculado por componentes:{" "}
+              {componentsTotal > 0 ? ars(componentsTotal) : "a definir"}
+            </span>
+          </div>
+        )}
+        <div className="section-title" style={{ marginTop: 10 }}>
+          <h2>Reglas y componentes</h2>
+          <span className="small muted">
+            {rulesLoading
+              ? "Cargando…"
+              : `${rules.length} regla${rules.length === 1 ? "" : "s"}`}
+          </span>
+        </div>
+        {rulesLoading && <div className="skeleton" />}
+        {!rulesLoading && !rules.length && mode === "fixed" && (
+          <div className="alert error">
+            Esta promo fija no tiene reglas activas. Debe configurarse antes de
+            vender.
+          </div>
+        )}
+        {customWithoutRules && (
+          <div className="alert info">
+            Esta promo no tiene reglas predefinidas. Agregá componentes desde el
+            catálogo.
+          </div>
+        )}
+        {!rulesLoading &&
+          rules.map((rule) => {
+            const state = ruleStates[rule.id] || {
+              loading: true,
+              variants: [],
+            };
+            const selectedVariant = variantForRule(rule);
+            return (
+              <div
+                className="card dashboard-card"
+                style={{ marginBottom: 12 }}
+                key={rule.id}
+              >
+                <div className="inline-row">
+                  <strong>{rule.name}</strong>
+                  <span className="badge">x{rule.requiredQuantity}</span>
+                </div>
+                <p className="small muted" style={{ margin: "6px 0 12px" }}>
+                  Producto base: {rule.productBaseName || "No informado"}
+                </p>
+                {state.loading && (
+                  <div className="small muted">
+                    Cargando variantes elegibles…
+                  </div>
+                )}
+                {!state.loading && rule.allowVariantChoice && (
+                  <div className="form-field" style={{ marginBottom: 8 }}>
+                    <label htmlFor={`rule-${rule.id}`}>
+                      Elegí una variante
+                    </label>
+                    <select
+                      id={`rule-${rule.id}`}
+                      required
+                      value={selectedVariants[rule.id] || ""}
+                      onChange={(event) =>
+                        setSelectedVariants((current) => ({
+                          ...current,
+                          [rule.id]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Seleccionar variante</option>
+                      {state.variants.map((variant) => (
+                        <option key={variant.id} value={variant.id}>
+                          {variant.name} ·{" "}
+                          {stockStatusLabel(variant.stockStatus)} ·{" "}
+                          {ars(variantPrice(variant))}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {!state.loading &&
+                  !rule.allowVariantChoice &&
+                  rule.fixedVariantId && (
+                    <div className="selected-product">
+                      <strong>
+                        Variante fija:{" "}
+                        {rule.fixedVariantName ||
+                          selectedVariant?.name ||
+                          "Configurada"}
+                      </strong>
+                    </div>
+                  )}
+                {state.error && (
+                  <div className="alert error">{state.error}</div>
+                )}
+                {selectedVariant && (
+                  <div className="stock-grid">
+                    <div>
+                      <span>Stock actual</span>
+                      <strong>{selectedVariant.currentStock}</strong>
+                    </div>
+                    <div>
+                      <span>Estado</span>
+                      <strong>
+                        {stockStatusLabel(selectedVariant.stockStatus)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Precio unitario</span>
+                      <strong>{ars(variantPrice(selectedVariant))}</strong>
+                    </div>
+                    <div>
+                      <span>Subtotal</span>
+                      <strong>
+                        {ars(
+                          variantPrice(selectedVariant) * rule.requiredQuantity,
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        {customWithoutRules && (
+          <section className="catalog-section">
+            <div className="form-field">
+              <label htmlFor="catalog-search">Buscar producto o variante</label>
+              <input
+                id="catalog-search"
+                value={catalogSearch}
+                onChange={(event) => setCatalogSearch(event.target.value)}
+                placeholder="Ej. detergente, 1 litro…"
+              />
+            </div>
+            <div className="catalog-list">
+              {catalogProducts.map((product) => {
+                const selectedTotal = product.variants.reduce(
+                  (sum, variant) => sum + (selectedQuantities[variant.id] || 0),
+                  0,
+                );
+                const expanded = Boolean(expandedProducts[product.id]);
+                const single = product.variants.length === 1;
+                return (
+                  <div className="catalog-product" key={product.id}>
+                    <div className="catalog-product-row">
+                      <div className="catalog-product-main">
+                        <strong>{product.name}</strong>
+                        <span>
+                          {selectedTotal
+                            ? `${selectedTotal} seleccionado${selectedTotal === 1 ? "" : "s"}`
+                            : `${product.variants.length} variante${product.variants.length === 1 ? "" : "s"}`}
+                        </span>
+                      </div>
+                      <span
+                        className={`stock-chip ${stockTone(product.variants)}`}
+                      >
+                        {productStockLabel(product.variants)}
+                      </span>
+                      {product.variants.length > 1 && (
+                        <button
+                          type="button"
+                          className="catalog-expand"
+                          onClick={() =>
+                            setExpandedProducts((current) => ({
+                              ...current,
+                              [product.id]: !expanded,
+                            }))
+                          }
+                        >
+                          {expanded ? "▲" : "▼"}
+                        </button>
+                      )}
+                    </div>
+                    {product.variants.length === 0 && (
+                      <div className="catalog-empty">
+                        No hay variantes activas.
+                      </div>
+                    )}
+                    {(single || expanded) &&
+                      product.variants.map((variant) => {
+                        const quantity = selectedQuantities[variant.id] || 0;
+                        const canIncrease = !variant.managesStock
+                          ? true
+                          : variant.stockKnown === true &&
+                            variant.currentStock > quantity;
+                        return (
+                          <div className="catalog-variant-row" key={variant.id}>
+                            <div className="catalog-variant-main">
+                              <strong>{variant.name}</strong>
+                              <span>
+                                {[
+                                  variant.presentation,
+                                  `stock ${variant.currentStock}`,
+                                  stockStatusLabel(variant.stockStatus),
+                                  ars(variantPrice(variant)),
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            </div>
+                            <QuantityCounter
+                              value={quantity}
+                              canIncrease={canIncrease}
+                              onDecrease={() => changeQuantity(variant, -1)}
+                              onIncrease={() => changeQuantity(variant, 1)}
+                            />
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+        {customWithoutRules && (
+          <section className="catalog-summary">
+            <div className="section-title" style={{ margin: "14px 0 8px" }}>
+              <h2>Resumen</h2>
+              <span className="small muted">
+                {selectedManualRows.length} componente
+                {selectedManualRows.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {selectedManualRows.length ? (
+              selectedManualRows.map((row) => (
+                <div className="catalog-summary-row" key={row.variant.id}>
+                  <span>
+                    {row.variant.name} × {row.quantity}
+                  </span>
+                  <strong>{ars(row.subtotal)}</strong>
+                </div>
+              ))
+            ) : (
+              <p className="small muted">Elegí cantidades desde el catálogo.</p>
+            )}
+            <div className="catalog-total-row">
+              <span>Total calculado</span>
+              <strong>{ars(componentsTotal)}</strong>
+            </div>
+          </section>
+        )}
+        <div className="form-field">
+          <label htmlFor="promo-total">
+            Total manual{" "}
+            <span className="muted">
+              (opcional, reemplaza el monto del Movimiento)
+            </span>
+          </label>
+          <input
+            id="promo-total"
+            min="1"
+            step="1"
+            type="number"
+            value={form.manualTotal}
+            onChange={(event) =>
+              setForm({ ...form, manualTotal: event.target.value })
+            }
+          />
+        </div>
+        <div className="total-preview">
+          <span>Total calculado / final usado</span>
+          <strong>
+            {form.manualTotal && Number(form.manualTotal) > 0
+              ? `${ars(componentsTotal)} → ${ars(finalTotal)}`
+              : ars(finalTotal)}
+          </strong>
+        </div>
+        <div className="form-field">
+          <label htmlFor="promo-account">Cuenta</label>
+          <select
+            id="promo-account"
+            required
+            value={form.accountId}
+            onChange={(event) =>
+              setForm({ ...form, accountId: event.target.value })
+            }
+          >
+            <option value="">Seleccionar cuenta</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+          {!accounts.length && (
+            <p className="small muted">
+              Tu negocio no tiene cuentas activas para recibir el dinero. Pedile al
+              Admin negocio que cree o active una cuenta.
+            </p>
+          )}
+        </div>
+        <div className="form-field">
+          <label htmlFor="promo-date">Fecha</label>
+          <input
+            id="promo-date"
+            required
+            type="date"
+            value={form.date}
+            onChange={(event) => setForm({ ...form, date: event.target.value })}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="promo-description">
+            Descripción <span className="muted">(opcional)</span>
+          </label>
+          <textarea
+            id="promo-description"
+            value={form.description}
+            onChange={(event) =>
+              setForm({ ...form, description: event.target.value })
+            }
+          />
+        </div>
+        {error && <div className="alert error">{error}</div>}
+        {message && <div className="alert success">{message}</div>}
+        <button
+          className="primary-btn"
+          disabled={saving || Boolean(validationMessage)}
+        >
+          {saving ? "Guardando…" : "Guardar venta de promo"}
+        </button>
+        {validationMessage && !error && (
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            Para guardar: {validationMessage}
+          </p>
+        )}
+      </form>
+    </AppShell>
+  );
 }

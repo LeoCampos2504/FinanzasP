@@ -6,11 +6,13 @@ import { resolveBusinessId } from "@/lib/notion/domain";
 import { formatNotionError, getDataSourceSchema } from "@/lib/notion/schema";
 import { buildProductProperties, buildVariantProperties, normalizeProductInput, normalizeVariantInput, validateProductInput, validateVariantInput } from "@/lib/notion/product-admin";
 import { productAdminError } from "@/lib/notion/product-admin-errors";
+import { canManageProducts } from "@/lib/permissions";
 
 type CreationVariant = { name?: string; [key: string]: unknown };
 
 export async function POST(request: Request) {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return unauthorized(); }
+  if (!canManageProducts(session)) return forbidden();
 
   const body = await request.json().catch(() => ({}));
   const product = normalizeProductInput(body?.product || {});
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
 
   try {
     const [productSchema, variantSchema] = await Promise.all([getDataSourceSchema(productDataSourceId), getDataSourceSchema(variantsDataSourceId)]);
-    const businessId = await resolveBusinessId();
+    const businessId = await resolveBusinessId(session.activeBusinessId);
     const productBuilt = buildProductProperties(productSchema, product, businessId);
     const productPage = await createPage(productDataSourceId, productBuilt.properties);
     const createdVariants: Array<{ id: string; url?: string; name: string; warnings: string[] }> = [];
@@ -64,6 +66,8 @@ export async function POST(request: Request) {
     return productAdminError(error, "No se pudo crear el producto y sus variantes.", "Productos base / Variantes / Ítems vendibles");
   }
 }
+function unauthorized() { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+function forbidden() { return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "No tenés permiso para administrar productos." } }, { status: 403 }); }
 
 function validationError(message: string) {
   return NextResponse.json({ ok: false, error: { code: "VALIDATION", message } }, { status: 400 });

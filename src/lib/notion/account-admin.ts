@@ -2,7 +2,7 @@ import "server-only";
 
 import { checkbox, number, richText, select, status, title } from "@/lib/notion/properties";
 import { buildSchemaAwareProperties, DataSourceSchema, pickPropertyName } from "@/lib/notion/schema";
-import { getFirstCheckbox, getFirstNumber, getFirstTitle, getRichText, getFirstSelect } from "@/lib/notion/normalize";
+import { getFirstCheckbox, getFirstNumber, getFirstTitle, getRichText, getFirstSelect, getRelationIds } from "@/lib/notion/normalize";
 import type { Account, AccountInput } from "@/lib/types";
 
 export const accountCandidates = {
@@ -16,6 +16,7 @@ export const accountCandidates = {
   icon: ["Icono", "Ícono", "Icon"],
   notes: ["Notas", "Nota", "Descripción", "Descripcion"],
   expectedBalance: ["Saldo esperado"],
+  business: ["Negocio", "Negocios"],
 } as const;
 
 export function mapAccount(page: any): Account {
@@ -24,6 +25,7 @@ export function mapAccount(page: any): Account {
   return {
     id: page.id,
     name: getFirstTitle(page, accountCandidates.name),
+    businessIds: accountCandidates.business.flatMap((name) => getRelationIds(page, name)),
     type: firstRichOrSelect(page, accountCandidates.type) || null,
     initialBalance,
     expectedBalance: hasNumberProperty(page, accountCandidates.expectedBalance) ? expectedBalance : null,
@@ -56,12 +58,14 @@ export function accountSchemaForClient(schema: DataSourceSchema) {
     initialBalanceProperty: pickPropertyName(schema, accountCandidates.initialBalance),
     orderProperty: pickPropertyName(schema, accountCandidates.order),
     notesProperty: pickPropertyName(schema, accountCandidates.notes),
+    businessProperty: pickPropertyName(schema, accountCandidates.business),
   };
 }
 
 export function normalizeAccountInput(body: any): AccountInput {
   return {
     name: String(body?.name || "").trim(),
+    businessIds: Array.isArray(body?.businessIds) ? body.businessIds.map((id: unknown) => String(id)).filter(Boolean) : undefined,
     type: body?.type === undefined ? undefined : body.type === null ? null : String(body.type).trim(),
     initialBalance: body?.initialBalance === undefined || body?.initialBalance === "" || body?.initialBalance === null ? 0 : Number(body.initialBalance),
     isMainCash: body?.isMainCash === undefined ? false : toBoolean(body.isMainCash, false),
@@ -73,6 +77,7 @@ export function normalizeAccountInput(body: any): AccountInput {
 
 export function normalizeAccountPatch(body: any): Partial<AccountInput> {
   const input: Partial<AccountInput> = {};
+  if (Object.prototype.hasOwnProperty.call(body, "businessIds")) input.businessIds = Array.isArray(body.businessIds) ? body.businessIds.map((id: unknown) => String(id)).filter(Boolean) : [];
   if (Object.prototype.hasOwnProperty.call(body, "name")) input.name = String(body.name || "").trim();
   if (Object.prototype.hasOwnProperty.call(body, "type")) input.type = body.type === null ? null : String(body.type).trim();
   if (Object.prototype.hasOwnProperty.call(body, "initialBalance")) input.initialBalance = body.initialBalance === null || body.initialBalance === "" ? 0 : Number(body.initialBalance);
@@ -108,6 +113,7 @@ export function buildAccountProperties(schema: DataSourceSchema, input: Partial<
     order: { candidates: accountCandidates.order, value: input.order !== undefined && input.order !== null ? number(input.order) : undefined, label: "Orden" },
     type: { candidates: accountCandidates.type, value: input.type !== undefined ? accountTypeValue(schema, input.type) : undefined, label: "Tipo de cuenta" },
     notes: { candidates: accountCandidates.notes, value: input.notes !== undefined ? richText(input.notes || "") : undefined, label: "Notas" },
+    business: { candidates: accountCandidates.business, value: input.businessIds !== undefined ? relationValue(input.businessIds) : undefined, label: "Negocio" },
   });
 }
 
@@ -139,3 +145,5 @@ function toBoolean(value: unknown, fallback: boolean) {
   if (typeof value === "string") return value.toLowerCase() !== "false" && value !== "0";
   return Boolean(value);
 }
+
+function relationValue(ids: string[]) { return { relation: ids.map((id) => ({ id })) }; }

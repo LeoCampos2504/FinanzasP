@@ -1,6 +1,7 @@
 export type Account = {
   id: string;
   name: string;
+  businessIds?: string[];
   type?: string | null;
   initialBalance: number;
   expectedBalance?: number | null;
@@ -14,6 +15,7 @@ export type Account = {
 
 export type AccountInput = {
   name: string;
+  businessIds?: string[];
   type?: string | null;
   initialBalance?: number;
   isMainCash?: boolean;
@@ -21,6 +23,8 @@ export type AccountInput = {
   order?: number | null;
   notes?: string | null;
 };
+
+export type Business = { id: string; name: string; active?: boolean };
 
 export type Movement = {
   id: string;
@@ -122,6 +126,7 @@ export type ProductSaleInput = {
   description?: string;
   unitPriceMode: "individual" | "manual";
   manualUnitPrice?: number | null;
+  businessId?: string;
 };
 
 export type ReplenishmentInput = {
@@ -132,6 +137,7 @@ export type ReplenishmentInput = {
   unitCost: number;
   origin: "Fondo reposición" | "Ganancias" | "Inversión / capital" | "No aplica";
   description?: string;
+  businessId?: string;
 };
 
 export type Promo = {
@@ -195,4 +201,5 @@ export type PromoSaleInput = {
   selectedVariantsByRuleId: Record<string, string>;
   manualComponents: ManualPromoComponentInput[];
   manualTotal?: number | null;
+  businessId?: string;
 };

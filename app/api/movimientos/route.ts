@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { demoMovements } from "@/lib/demo-data";
 import { getEnv, isDemoMode } from "@/lib/env";
+import { isBusinessSeller } from "@/lib/permissions";
 import { queryDataSource } from "@/lib/notion/client";
 import { mapMovement } from "@/lib/notion/mappers";
 import { getTitle } from "@/lib/notion/normalize";
 
 export async function GET(request: Request) {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  if (isBusinessSeller(session)) return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "No tenés permiso para ver todos los movimientos." } }, { status: 403 });
   const filter = new URL(request.url).searchParams.get("filter") || "all";
   if (isDemoMode() || !getEnv("MOVIMIENTOS_DATA_SOURCE_ID")) {
     const today = new Date();

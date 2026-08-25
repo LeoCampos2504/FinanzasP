@@ -9,14 +9,17 @@ import { getDataSourceSchema } from "@/lib/notion/schema";
 import { resolveBusinessId } from "@/lib/notion/domain";
 import { productAdminError } from "@/lib/notion/product-admin-errors";
 import type { VariantInput } from "@/lib/types";
+import { canManageProducts } from "@/lib/permissions";
+import { assertPageBusinessAccess } from "@/lib/notion/business-access";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ variantId: string }> }) {
-  try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  let session; try { session = await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
+  if (!canManageProducts(session)) return NextResponse.json({ ok: false, error: { code: "FORBIDDEN", message: "No tenés permiso para administrar productos." } }, { status: 403 });
   const { variantId } = await params; if (!variantId) return NextResponse.json({ ok: false, error: { code: "VALIDATION", message: "Falta el ID de la variante." } }, { status: 400 });
   const body = await request.json().catch(() => ({})); const input = normalizePatch(body); const validation = validatePatch(input); if (validation) return NextResponse.json({ ok: false, error: { code: "VALIDATION", message: validation } }, { status: 400 });
   if (isDemoMode()) return NextResponse.json({ ok: true, data: { id: variantId, ...input }, meta: { demo: true, message: "Variante editada simulada en modo demo." } });
   const dataSourceId = getEnv("VARIANTES_DATA_SOURCE_ID"); if (!dataSourceId) return NextResponse.json({ ok: false, error: { code: "CONFIG_MISSING", message: "Falta configurar VARIANTES_DATA_SOURCE_ID." } }, { status: 503 });
-  try { const schema = await getDataSourceSchema(dataSourceId); const businessId = input.productBaseId || input.name !== undefined ? await resolveBusinessId() : ""; const built = buildVariantProperties(schema, input, businessId, false); const page = await updatePage(variantId, built.properties); return NextResponse.json({ ok: true, data: mapSellableVariant(page), meta: { warnings: built.warnings } }); }
+  try { await assertPageBusinessAccess(variantId, session); const schema = await getDataSourceSchema(dataSourceId); const businessId = input.productBaseId || input.name !== undefined ? await resolveBusinessId(session.activeBusinessId) : ""; const built = buildVariantProperties(schema, input, businessId, false); const page = await updatePage(variantId, built.properties); return NextResponse.json({ ok: true, data: mapSellableVariant(page), meta: { warnings: built.warnings } }); }
   catch (error) { return productAdminError(error, "No se pudo editar la variante.", "Variantes / Ítems vendibles"); }
 }
 

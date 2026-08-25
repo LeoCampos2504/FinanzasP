@@ -20,7 +20,7 @@ export class PartialProductCreationError extends ProductOperationError {
 }
 
 export async function createProductSale(input: ProductSaleInput) {
-  await ensureActiveAccount(input.accountId);
+  await ensureActiveAccount(input.accountId, input.businessId);
   const variant = await getVariant(input.variantId);
   if (input.unitPriceMode === "manual" && !(Number(input.manualUnitPrice) > 0)) throw new ProductOperationError("VALIDATION", "El precio unitario manual debe ser mayor a cero.");
   const unitPrice = input.unitPriceMode === "manual" ? Number(input.manualUnitPrice) : variant.salePrice;
@@ -31,15 +31,15 @@ export async function createProductSale(input: ProductSaleInput) {
 }
 
 export async function createProductReplenishment(input: ReplenishmentInput) {
-  await ensureActiveAccount(input.accountId);
+  await ensureActiveAccount(input.accountId, input.businessId);
   const variant = await getVariant(input.variantId);
   const unitPrice = Number(input.unitCost);
   if (!(unitPrice > 0)) throw new ProductOperationError("VALIDATION", "El costo unitario debe ser mayor a cero.");
   return createMovementAndDetail({ kind: "replenishment", input, variant, unitPrice, total: calculateProductTotal(input.quantity, unitPrice) });
 }
 
-async function ensureActiveAccount(accountId: string) {
-  try { await assertActiveAccount(accountId); } catch (error) { if (error instanceof AccountOperationError) throw new ProductOperationError(error.code, error.message); throw error; }
+async function ensureActiveAccount(accountId: string, businessId?: string) {
+  try { await assertActiveAccount(accountId, businessId); } catch (error) { if (error instanceof AccountOperationError) throw new ProductOperationError(error.code, error.message); throw error; }
 }
 
 async function getVariant(variantId: string) {
@@ -56,7 +56,7 @@ async function createMovementAndDetail(args: { kind: "sale" | "replenishment"; i
   const detailDataSourceId = getEnv("DETALLE_PRODUCTOS_DATA_SOURCE_ID");
   if (!movementDataSourceId) throw new ProductOperationError("CONFIG_MISSING", "Falta configurar MOVIMIENTOS_DATA_SOURCE_ID.");
   if (!detailDataSourceId) throw new ProductOperationError("CONFIG_MISSING", "Falta configurar DETALLE_PRODUCTOS_DATA_SOURCE_ID.");
-  const [movementSchema, detailSchema, businessId] = await Promise.all([getDataSourceSchema(movementDataSourceId), getDataSourceSchema(detailDataSourceId), resolveBusinessId()]);
+  const [movementSchema, detailSchema, businessId] = await Promise.all([getDataSourceSchema(movementDataSourceId), getDataSourceSchema(detailDataSourceId), resolveBusinessId(args.input.businessId)]);
   const isSale = args.kind === "sale";
   const input = args.input;
   const description = input.description ? String(input.description) : undefined;
