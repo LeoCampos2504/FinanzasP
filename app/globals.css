@@ -27,6 +27,7 @@ button { cursor: pointer; }
 .nav-icon { font-size: 21px; line-height: 1; }
 .fab { position: fixed; z-index: 11; right: max(20px, calc((100vw - 460px) / 2 + 20px)); bottom: 86px; width: 58px; height: 58px; border: 0; border-radius: 50%; background: #22a5f5; color: white; font-size: 31px; line-height: 1; box-shadow: 0 10px 24px rgba(11,72,183,.32); }
 .account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.account-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 14px 0 4px; } .account-summary > div { padding: 13px; border-radius: 14px; background: #f8faff; } .account-summary span { display: block; color: var(--muted); font-size: 10px; } .account-summary strong { display: block; margin-top: 5px; font-size: 16px; } .account-admin-card { padding: 16px; }
 .account-card { padding: 15px; min-height: 94px; }
 .account-card .account-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; background: var(--sky); color: var(--blue); }
 .account-card strong { display: block; margin-top: 9px; font-size: 17px; }

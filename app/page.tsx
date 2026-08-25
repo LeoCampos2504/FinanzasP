@@ -7,7 +7,7 @@ import { ars } from "@/lib/format";
 import { stockStatusLabel } from "@/lib/stock";
 import type { Account, Debtor, Movement, SellableVariant } from "@/lib/types";
 
-type Dashboard = { accounts: Account[]; totals: { efectivo: number; mp: number; total: number; ingresosHoy: number; egresosHoy: number; balanceHoy: number }; latestMovements: Movement[]; pendingDebtors: Debtor[]; lowStock: SellableVariant[] };
+type Dashboard = { accounts: Account[]; totals: { efectivo: number; total: number; ingresosHoy: number; egresosHoy: number; balanceHoy: number }; latestMovements: Movement[]; pendingDebtors: Debtor[]; lowStock: SellableVariant[] };
 export default function DashboardPage() {
   const router = useRouter(); const [data, setData] = useState<Dashboard | null>(null); const [demo, setDemo] = useState(false); const [error, setError] = useState("");
   useEffect(() => { fetch("/api/dashboard").then(async (r) => { const body = await r.json(); if (r.status === 401) return router.replace("/login"); if (!body.ok) throw new Error(body.error?.message); setData(body.data); setDemo(Boolean(body.meta?.demo)); }).catch((e) => setError(e.message || "No se pudo cargar el resumen.")); }, [router]);

@@ -58,7 +58,7 @@ function promoErrorResponse(error: unknown) {
   const operation = error instanceof PromoOperationError ? error : null;
   const schema = error instanceof SchemaValidationError ? error : null;
   const code = operation ? operation.code : schema ? schema.code : "NOTION_ERROR";
-  const status = code === "VALIDATION" || code === "CUSTOM_COMPONENTS_REQUIRED" || code === "FIXED_COMPONENTS_REQUIRED" || code === "PROMO_NOT_FOUND" || code === "RULE_VARIANT_REQUIRED" || code === "VARIANT_NOT_FOUND" || code === "VARIANT_NOT_ALLOWED" ? 400 : code === "STOCK_INSUFFICIENT" || code === "STOCK_UNKNOWN" ? 409 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : code === "PARTIAL_PROMO_CREATION" ? 502 : 502;
+  const status = code === "VALIDATION" || code === "CUSTOM_COMPONENTS_REQUIRED" || code === "FIXED_COMPONENTS_REQUIRED" || code === "PROMO_NOT_FOUND" || code === "RULE_VARIANT_REQUIRED" || code === "VARIANT_NOT_FOUND" || code === "VARIANT_NOT_ALLOWED" || code === "ACCOUNT_NOT_FOUND" ? 400 : code === "STOCK_INSUFFICIENT" || code === "STOCK_UNKNOWN" || code === "ACCOUNT_INACTIVE" ? 409 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : code === "PARTIAL_PROMO_CREATION" ? 502 : 502;
   const message = operation ? operation.message : schema ? schema.message : formatNotionError(error, "No se pudo guardar la venta de la promo.", "Movimientos / Detalle de productos");
   return NextResponse.json({ ok: false, error: { code, message, details: operation ? operation.details : undefined } }, { status });
 }

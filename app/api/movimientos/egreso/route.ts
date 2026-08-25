@@ -5,6 +5,7 @@ import { getEnv, isDemoMode } from "@/lib/env";
 import { resolveBusinessId } from "@/lib/notion/domain";
 import { checkbox, date, number, relation, richText, select, title } from "@/lib/notion/properties";
 import { buildSchemaAwareProperties, formatNotionError, getDataSourceSchema } from "@/lib/notion/schema";
+import { AccountOperationError, assertActiveAccount } from "@/lib/notion/account-service";
 
 export async function POST(request: Request) {
   try { await requireAuth(); } catch { return NextResponse.json({ ok: false, error: { code: "UNAUTHORIZED", message: "Sesión requerida." } }, { status: 401 }); }
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   const subtype = ["Gasto", "Retiro personal", "Préstamo", "Otro"].includes(body.subtype) ? body.subtype : "Otro";
   if (isDemoMode() || !getEnv("MOVIMIENTOS_DATA_SOURCE_ID")) return NextResponse.json({ ok: true, data: { id: `demo-${Date.now()}` }, meta: { demo: true, message: "Guardado simulado en modo demo." } });
   try {
+    await assertActiveAccount(String(body.accountId));
     const dataSourceId = getEnv("MOVIMIENTOS_DATA_SOURCE_ID");
     const schema = await getDataSourceSchema(dataSourceId);
     const businessId = await resolveBusinessId();
@@ -43,5 +45,5 @@ export async function POST(request: Request) {
     });
     const page = await createPage(dataSourceId, built.properties);
     return NextResponse.json({ ok: true, data: { id: page.id }, meta: built.warnings.length ? { warnings: built.warnings } : undefined });
-  } catch (error) { return NextResponse.json({ ok: false, error: { code: error instanceof Error && "code" in error ? String((error as Error & { code?: string }).code) : "NOTION_ERROR", message: formatNotionError(error, "No se pudo guardar el egreso.", "Movimientos") } }, { status: error instanceof Error && "code" in error && String((error as Error & { code?: string }).code) === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : 502 }); }
+  } catch (error) { const code = error instanceof AccountOperationError ? error.code : error instanceof Error && "code" in error ? String((error as Error & { code?: string }).code) : "NOTION_ERROR"; const status = code === "ACCOUNT_INACTIVE" ? 409 : code === "ACCOUNT_NOT_FOUND" ? 404 : code === "CONFIG_MISSING" ? 503 : code === "NOTION_SCHEMA_MISSING_PROPERTY" ? 422 : 502; return NextResponse.json({ ok: false, error: { code, message: error instanceof AccountOperationError ? error.message : formatNotionError(error, "No se pudo guardar el egreso.", "Movimientos") } }, { status }); }
 }

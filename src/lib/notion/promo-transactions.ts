@@ -7,6 +7,7 @@ import { buildSchemaAwareProperties, getDataSourceSchema, pickPropertyName, pick
 import { loadPromoContext, PromoOperationError, resolveManualPromoComponents, resolvePromoSale } from "@/lib/notion/promo-service";
 import { calculatePromoTotal } from "@/lib/promo-calculations";
 import type { PromoSaleInput, ResolvedPromoItem } from "@/lib/types";
+import { AccountOperationError, assertActiveAccount } from "@/lib/notion/account-service";
 
 export class PartialPromoCreationError extends PromoOperationError {
   constructor(message: string, details: Record<string, unknown>) { super("PARTIAL_PROMO_CREATION", message, details); }
@@ -18,6 +19,7 @@ const movementCandidates = ["Movimiento", "Movimientos", "Movimiento relacionado
 const variantCandidates = ["Variante / Ítem", "Variante / Item", "Variante", "Ítem vendible", "Item vendible", "Producto vendido"] as const;
 
 export async function createPromoSale(input: PromoSaleInput) {
+  try { await assertActiveAccount(input.accountId); } catch (error) { if (error instanceof AccountOperationError) throw new PromoOperationError(error.code, error.message); throw error; }
   const movementId = getEnv("MOVIMIENTOS_DATA_SOURCE_ID");
   const detailId = getEnv("DETALLE_PRODUCTOS_DATA_SOURCE_ID");
   if (!movementId) throw new PromoOperationError("CONFIG_MISSING", "Falta configurar MOVIMIENTOS_DATA_SOURCE_ID.");

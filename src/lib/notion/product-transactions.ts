@@ -7,6 +7,7 @@ import { buildSchemaAwareProperties, getDataSourceSchema, SchemaValidationError 
 import { mapSellableVariant } from "@/lib/notion/product-mappers";
 import { calculateProductTotal, validateStock } from "@/lib/product-calculations";
 import type { ProductSaleInput, ReplenishmentInput } from "@/lib/types";
+import { AccountOperationError, assertActiveAccount } from "@/lib/notion/account-service";
 
 export class ProductOperationError extends Error {
   code: string;
@@ -19,6 +20,7 @@ export class PartialProductCreationError extends ProductOperationError {
 }
 
 export async function createProductSale(input: ProductSaleInput) {
+  await ensureActiveAccount(input.accountId);
   const variant = await getVariant(input.variantId);
   if (input.unitPriceMode === "manual" && !(Number(input.manualUnitPrice) > 0)) throw new ProductOperationError("VALIDATION", "El precio unitario manual debe ser mayor a cero.");
   const unitPrice = input.unitPriceMode === "manual" ? Number(input.manualUnitPrice) : variant.salePrice;
@@ -29,10 +31,15 @@ export async function createProductSale(input: ProductSaleInput) {
 }
 
 export async function createProductReplenishment(input: ReplenishmentInput) {
+  await ensureActiveAccount(input.accountId);
   const variant = await getVariant(input.variantId);
   const unitPrice = Number(input.unitCost);
   if (!(unitPrice > 0)) throw new ProductOperationError("VALIDATION", "El costo unitario debe ser mayor a cero.");
   return createMovementAndDetail({ kind: "replenishment", input, variant, unitPrice, total: calculateProductTotal(input.quantity, unitPrice) });
+}
+
+async function ensureActiveAccount(accountId: string) {
+  try { await assertActiveAccount(accountId); } catch (error) { if (error instanceof AccountOperationError) throw new ProductOperationError(error.code, error.message); throw error; }
 }
 
 async function getVariant(variantId: string) {

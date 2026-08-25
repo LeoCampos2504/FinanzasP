@@ -1,14 +1,14 @@
 import type { Account, Category, Debtor, Movement, ProductBase, Promo, PromoRule, SellableVariant } from "@/lib/types";
 
 export const demoAccounts: Account[] = [
-  { id: "demo-cash", name: "Efectivo", balance: 186500, primary: true },
-  { id: "demo-mp", name: "MP / Transferencia", balance: 324800 },
+  { id: "demo-cash", name: "Efectivo", type: "Caja", initialBalance: 150000, expectedBalance: 186500, balance: 186500, active: true, isMainCash: true, order: 1, notes: "Cuenta demo." },
+  { id: "demo-mp", name: "Mercado Pago", type: "Billetera virtual", initialBalance: 300000, expectedBalance: 324800, balance: 324800, active: true, isMainCash: false, order: 2, notes: "Cuenta demo." },
 ];
 export const demoMovements: Movement[] = [
   { id: "demo-1", name: "Venta mostrador", date: new Date().toISOString().slice(0, 10), type: "Ingreso", subtype: "Venta simple", amount: 28500, account: "Efectivo", scope: "Negocio" },
-  { id: "demo-2", name: "Cobro a Juan Pérez", date: new Date().toISOString().slice(0, 10), type: "Ingreso", subtype: "Cobro de deuda", amount: 12000, account: "MP / Transferencia", debtor: "Juan Pérez", scope: "Negocio" },
+  { id: "demo-2", name: "Cobro a Juan Pérez", date: new Date().toISOString().slice(0, 10), type: "Ingreso", subtype: "Cobro de deuda", amount: 12000, account: "Mercado Pago", debtor: "Juan Pérez", scope: "Negocio" },
   { id: "demo-3", name: "Compra de insumos", date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), type: "Egreso", subtype: "Gasto", amount: 18900, account: "Efectivo", category: "Insumos", scope: "Negocio" },
-  { id: "demo-4", name: "Retiro personal", date: new Date(Date.now() - 172800000).toISOString().slice(0, 10), type: "Egreso", subtype: "Retiro personal", amount: 30000, account: "MP / Transferencia", scope: "Personal" },
+  { id: "demo-4", name: "Retiro personal", date: new Date(Date.now() - 172800000).toISOString().slice(0, 10), type: "Egreso", subtype: "Retiro personal", amount: 30000, account: "Mercado Pago", scope: "Personal" },
 ];
 export const demoDebtors: Debtor[] = [
   { id: "demo-debtor-1", name: "Juan Pérez", balance: 46500, status: "Pendiente" },

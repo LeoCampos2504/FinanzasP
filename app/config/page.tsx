@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 
 type Variable = { name: string; configured: boolean };
@@ -18,6 +19,7 @@ type SchemaStatus = {
 };
 
 export default function ConfigPage() {
+  const router = useRouter();
   const [variables, setVariables] = useState<Variable[]>([]);
   const [schemas, setSchemas] = useState<SchemaStatus[]>([]);
   const [demo, setDemo] = useState(false);
@@ -59,6 +61,8 @@ export default function ConfigPage() {
         {schema.writeSupported && <div className="alert success">Propiedades necesarias para crear y editar detectadas.</div>}
       </>}
     </div>)}
+
+    <div className="section-title"><h2>Administración</h2></div><div className="card dashboard-card"><p className="small muted" style={{ marginTop: 0 }}>Las cuentas y billeteras son creadas por vos. No hay billeteras reales predefinidas en la app.</p><button className="primary-btn" onClick={() => router.push("/cuentas")}>Administrar cuentas</button></div>
 
     <div className="section-title"><h2>PWA</h2></div><div className="card dashboard-card"><p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>Instalá esta app desde el menú del navegador para acceder rápidamente desde tu celular. Funciona como una app independiente.</p></div>
     <div className="section-title"><h2>Seguridad</h2></div><div className="card dashboard-card"><p className="small muted" style={{ margin: 0, lineHeight: 1.55 }}>El token de Notion se usa únicamente en el servidor. La sesión se protege con una cookie httpOnly firmada.</p></div>

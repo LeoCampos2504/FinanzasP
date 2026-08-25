@@ -1,4 +1,4 @@
-# CODEX REPORT - Finanzas El Tigre PWA - MVP 4.1 Producto + variantes
+# CODEX REPORT - Finanzas El Tigre PWA - MVP 4.5 Cuentas y billeteras
 
 ## Resumen
 
@@ -309,6 +309,97 @@ Se agregó `src/lib/stock.ts` con la función pura `normalizeStockStatus`, que d
 
 ## Pendientes posteriores
 
+- Estadísticas avanzadas.
+- Modo offline.
+
+## MVP 4.5 Cuentas y billeteras
+
+### Resumen
+
+Se agregó administración de Cuentas creadas por el usuario. La app ahora permite listar, crear, editar, activar y desactivar cuentas sin borrado físico, incluyendo saldo inicial, saldo esperado, caja principal, tipo, orden y notas cuando esas propiedades existen en el schema real.
+
+### Alcance
+
+Incluido: `/cuentas`, `/cuentas/nueva`, `/cuentas/[accountId]/editar`, `GET/POST /api/cuentas` y `PATCH /api/cuentas/[accountId]`; filtro de inactivas, resumen de saldos, schema de tipo dinámico y acceso desde Config. No incluido: Caja/POS, pago dividido, usuarios internos, vista PC completa, estadísticas avanzadas ni modo offline.
+
+### Reglas de negocio
+
+- Las cuentas/billeteras las crea el usuario.
+- No se agregaron billeteras reales hardcodeadas para Notion.
+- Los selects de ventas, egresos, reposiciones, cobros y promos consumen `GET /api/cuentas` sin `includeInactive`, por lo que solo reciben cuentas activas.
+- Las cuentas inactivas solo aparecen en administración con `includeInactive=true`.
+- No existe eliminación física; activar/desactivar usa la propiedad de estado detectada.
+
+### Rutas nuevas
+
+- `/cuentas`: resumen, listado activo/inactivo y acciones.
+- `/cuentas/nueva`: alta de cuenta.
+- `/cuentas/[accountId]/editar`: edición y activación/desactivación.
+
+### API nuevas
+
+- `GET /api/cuentas`: cuentas activas por defecto; `?includeInactive=true` para administración. Devuelve metadata de schema para el formulario.
+- `POST /api/cuentas`: crea una cuenta con payload schema-aware.
+- `PATCH /api/cuentas/[accountId]`: actualiza solo propiedades presentes.
+
+### Notion
+
+`src/lib/notion/account-admin.ts` usa candidatos para Nombre, Activa/Activo, caja principal, saldo inicial, orden, tipo, icono, color y notas. El tipo se envía como `select`, `status` o `rich_text` según la definición detectada y se valida contra las opciones reales cuando existen. No se escriben `Total entradas`, `Total salidas`, `Movimiento neto` ni `Saldo esperado`, porque son rollups/fórmulas calculadas. Los nombres opcionales ausentes se omiten con warning y Nombre produce un error claro si falta.
+
+`src/lib/notion/account-service.ts` valida server-side que la cuenta referenciada exista y esté activa antes de ingresos, egresos, ventas, reposiciones, cobros y promos. Una cuenta inactiva devuelve `ACCOUNT_INACTIVE` con un mensaje accionable.
+
+### Seguridad
+
+Todas las rutas de administración requieren sesión. `NOTION_TOKEN` continúa exclusivamente en backend/server-side y nunca se envía al cliente. No se tocó `.env.local`.
+
+### Demo mode
+
+El modo demo conserva cuentas de ejemplo únicamente dentro del store demo, ahora con `Efectivo` y `Mercado Pago`. Alta, edición y activación/desactivación responden “Guardado simulado en modo demo.” En modo real, las cuentas provienen únicamente del data source Cuentas.
+
+### Validaciones
+
+Nombre requerido; saldo inicial numérico con default 0; orden numérico si se informa; tipo validado contra opciones select/status reales; edición parcial sin sobrescribir campos omitidos; no se permite borrar físicamente; cuentas inactivas no pueden usarse en operaciones server-side.
+
+### Archivos modificados
+
+- `src/lib/types.ts`: `Account` y `AccountInput` completos.
+- `src/lib/notion/account-admin.ts`: candidatos, mapper, schema de formulario, normalización, validación y builder.
+- `src/lib/notion/account-service.ts`: validación de cuenta activa en operaciones.
+- `src/lib/demo-account-store.ts` y `src/lib/demo-data.ts`: demo de cuentas y mutaciones simuladas.
+- `app/api/cuentas/route.ts` y `app/api/cuentas/[accountId]/route.ts`: API de administración.
+- `app/cuentas/page.tsx`, `app/cuentas/nueva/page.tsx`, `app/cuentas/[accountId]/editar/page.tsx` y `src/components/account-admin-forms.tsx`: UI.
+- `app/api/config/status/route.ts`, `app/config/page.tsx`: soporte de escritura y acceso desde Config.
+- `app/api/dashboard/route.ts`, movimientos y transacciones: mapper activo y bloqueo de cuentas inactivas.
+- `src/lib/notion/properties.ts`: constructor `status` para tipos de cuenta Notion.
+- `app/globals.css`: estilos de resumen y cards de cuentas.
+
+### Comandos ejecutados
+
+- `npm run typecheck` — correcto.
+- `npm run lint` — correcto.
+- `npm run build` — correcto; generó 39 rutas App Router, incluyendo `/cuentas`, formularios y `PATCH /api/cuentas/[accountId]`.
+- Smoke local sin sesión — `/cuentas`, `/cuentas/nueva`, `/config`, ingreso, egreso, venta producto, reposición y venta promo respondieron HTTP 200; `GET/POST /api/cuentas`, `PATCH /api/cuentas/[accountId]` y `/api/config/status` respondieron 401 cuando no había sesión.
+
+### Pruebas manuales recomendadas
+
+1. Abrir Config y verificar que Cuentas muestre soporte de escritura y propiedades detectadas.
+2. Abrir `/cuentas`.
+3. Crear una cuenta nueva y verificarla en Notion.
+4. Editar saldo inicial.
+5. Editar nombre, tipo, orden y notas.
+6. Desactivar la cuenta.
+7. Confirmar que no aparece en venta con producto.
+8. Confirmar que no aparece en venta promo.
+9. Confirmar que no aparece en egresos ni reposiciones/cobros.
+10. Reactivar la cuenta y confirmar que vuelve a los selects.
+11. Probar demo mode y sus mensajes simulados.
+12. Confirmar que no se escriben rollups/fórmulas como Saldo esperado.
+
+### Pendientes próximos
+
+- Usuarios internos.
+- Vista PC responsive.
+- Caja/POS local.
 - Estadísticas avanzadas.
 - Modo offline.
 

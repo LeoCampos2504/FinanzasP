@@ -1,9 +1,25 @@
 export type Account = {
   id: string;
   name: string;
+  type?: string | null;
+  initialBalance: number;
+  expectedBalance?: number | null;
+  active: boolean;
+  isMainCash?: boolean;
+  order?: number | null;
+  notes?: string | null;
+  /** Alias de compatibilidad para el dashboard existente. */
   balance: number;
+};
+
+export type AccountInput = {
+  name: string;
+  type?: string | null;
+  initialBalance?: number;
+  isMainCash?: boolean;
   active?: boolean;
-  primary?: boolean;
+  order?: number | null;
+  notes?: string | null;
 };
 
 export type Movement = {
