@@ -1,0 +1,3 @@
+import type { Movement } from "@/lib/types";
+import { ars, dateLabel } from "@/lib/format";
+export function MovementRow({ movement }: { movement: Movement }) { const income = movement.type === "Ingreso"; return <div className="movement-row"><div className={`movement-icon ${income ? "income" : "expense"}`}>{income ? "↗" : "↘"}</div><div className="movement-main"><strong>{movement.name || movement.subtype}</strong><span>{movement.subtype} · {movement.account || "Cuenta"} · {dateLabel(movement.date)}</span>{movement.review && <span><em className="badge">⚠️ Revisar</em></span>}</div><div className={`movement-amount money ${income ? "positive" : "negative"}`}>{income ? "+" : "−"}{ars(movement.amount)}</div></div>; }
